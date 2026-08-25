@@ -68,6 +68,62 @@ export const gaDailyGeo = pgTable(
   (table) => [unique().on(table.date, table.country, table.city)],
 );
 
+export const gscDailyQuery = pgTable(
+  "gsc_daily_query",
+  {
+    id: serial("id").primaryKey(),
+    date: date("date", { mode: "string" }).notNull(),
+    query: text("query").notNull(),
+    clicks: integer("clicks").notNull(),
+    impressions: integer("impressions").notNull(),
+    ctr: numeric("ctr").notNull(),
+    position: numeric("position").notNull(),
+  },
+  (table) => [unique().on(table.date, table.query)],
+);
+
+export const gscDailyPage = pgTable(
+  "gsc_daily_page",
+  {
+    id: serial("id").primaryKey(),
+    date: date("date", { mode: "string" }).notNull(),
+    page: text("page").notNull(),
+    clicks: integer("clicks").notNull(),
+    impressions: integer("impressions").notNull(),
+    ctr: numeric("ctr").notNull(),
+    position: numeric("position").notNull(),
+  },
+  (table) => [unique().on(table.date, table.page)],
+);
+
+export const gscDailyCountry = pgTable(
+  "gsc_daily_country",
+  {
+    id: serial("id").primaryKey(),
+    date: date("date", { mode: "string" }).notNull(),
+    country: text("country").notNull(),
+    clicks: integer("clicks").notNull(),
+    impressions: integer("impressions").notNull(),
+    ctr: numeric("ctr").notNull(),
+    position: numeric("position").notNull(),
+  },
+  (table) => [unique().on(table.date, table.country)],
+);
+
+export const gscDailyDevice = pgTable(
+  "gsc_daily_device",
+  {
+    id: serial("id").primaryKey(),
+    date: date("date", { mode: "string" }).notNull(),
+    device: text("device").notNull(),
+    clicks: integer("clicks").notNull(),
+    impressions: integer("impressions").notNull(),
+    ctr: numeric("ctr").notNull(),
+    position: numeric("position").notNull(),
+  },
+  (table) => [unique().on(table.date, table.device)],
+);
+
 export const syncRuns = pgTable("sync_runs", {
   id: serial("id").primaryKey(),
   source: text("source").notNull(), // 'ga4' | 'gsc'

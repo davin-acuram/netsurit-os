@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { incrementalRange, syncGa4 } from "@/lib/google-analytics/sync";
+import { incrementalRange as gaIncrementalRange, syncGa4 } from "@/lib/google-analytics/sync";
+import { incrementalRange as gscIncrementalRange, syncGsc } from "@/lib/search-console/sync";
 
 // Vercel's own Cron Jobs send `Authorization: Bearer $CRON_SECRET`
 // automatically once the env var is set; the query param exists for
@@ -19,11 +20,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const results: Record<string, unknown> = {};
+  let hadError = false;
+
   try {
-    const result = await syncGa4(incrementalRange());
-    return NextResponse.json({ status: "ok", ...result });
+    results.ga4 = await syncGa4(gaIncrementalRange());
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ status: "error", message }, { status: 500 });
+    hadError = true;
+    results.ga4 = { status: "error", message: err instanceof Error ? err.message : String(err) };
   }
+
+  try {
+    results.gsc = await syncGsc(gscIncrementalRange());
+  } catch (err) {
+    hadError = true;
+    results.gsc = { status: "error", message: err instanceof Error ? err.message : String(err) };
+  }
+
+  return NextResponse.json(
+    { status: hadError ? "error" : "ok", ...results },
+    { status: hadError ? 500 : 200 },
+  );
 }
