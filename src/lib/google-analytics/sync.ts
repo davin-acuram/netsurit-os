@@ -67,6 +67,7 @@ function buildRequests(range: DateRange): GaReportRequest[] {
         "averageSessionDuration",
         "conversions",
         "totalRevenue",
+        "eventCount",
       ],
     },
     {
@@ -102,6 +103,7 @@ function mapChannelRows(report: GaReport) {
     avgSessionDuration: r.averageSessionDuration,
     conversions: r.conversions,
     revenue: r.totalRevenue,
+    eventCount: parseInt(r.eventCount, 10),
   }));
 }
 
@@ -167,6 +169,7 @@ export async function syncGa4(range: DateRange): Promise<{ rowsSynced: number }>
             avgSessionDuration: sql`excluded.avg_session_duration`,
             conversions: sql`excluded.conversions`,
             revenue: sql`excluded.revenue`,
+            eventCount: sql`excluded.event_count`,
           },
         });
       rowsSynced += channelRows.length;

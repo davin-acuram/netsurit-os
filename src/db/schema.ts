@@ -23,6 +23,7 @@ export const gaDailyChannel = pgTable(
     avgSessionDuration: numeric("avg_session_duration").notNull(),
     conversions: numeric("conversions").notNull(),
     revenue: numeric("revenue").notNull(),
+    eventCount: integer("event_count").notNull().default(0),
   },
   (table) => [unique().on(table.date, table.channel)],
 );

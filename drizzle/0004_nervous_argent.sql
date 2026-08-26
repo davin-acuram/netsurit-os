@@ -1,0 +1,1 @@
+ALTER TABLE "ga_daily_channel" ADD COLUMN "event_count" integer DEFAULT 0 NOT NULL;
