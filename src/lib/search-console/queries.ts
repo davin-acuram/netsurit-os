@@ -152,6 +152,62 @@ export async function getClicksImpressionsTrend(range: DateRange): Promise<Trend
   }));
 }
 
+export interface OverviewKpiValues {
+  clicks: number;
+  impressions: number;
+  position: number;
+}
+
+export interface OverviewKpiSummary {
+  current: OverviewKpiValues;
+  previous: OverviewKpiValues | null;
+  deltaPct: Partial<Record<keyof OverviewKpiValues, number | null>>;
+}
+
+interface RawOverviewKpiRow {
+  clicks: string | null;
+  impressions: string | null;
+  position_weighted: string | null;
+}
+
+// Overview's blended KPI row only needs clicks/impressions/position --
+// narrower than fetchKpiValues, which also computes CTR the detail page
+// shows but Overview doesn't.
+async function fetchOverviewKpiValues(range: DateRange): Promise<OverviewKpiValues> {
+  const result = await db.execute(sql`
+    SELECT
+      SUM(clicks) as clicks,
+      SUM(impressions) as impressions,
+      SUM(position * impressions) as position_weighted
+    FROM gsc_daily_query
+    WHERE date BETWEEN ${range.start} AND ${range.end}
+  `);
+  const rows = result as unknown as RawOverviewKpiRow[];
+  const row = rows[0];
+  const clicks = Number(row?.clicks ?? 0);
+  const impressions = Number(row?.impressions ?? 0);
+  const positionWeighted = Number(row?.position_weighted ?? 0);
+  return {
+    clicks,
+    impressions,
+    position: safeDivide(positionWeighted, impressions),
+  };
+}
+
+export async function getOverviewKpiSummary(range: DateRange, withComparison: boolean): Promise<OverviewKpiSummary> {
+  const current = await fetchOverviewKpiValues(range);
+  if (!withComparison) {
+    return { current, previous: null, deltaPct: {} };
+  }
+  const previous = await fetchOverviewKpiValues(getPreviousPeriod(range));
+  const keys = Object.keys(current) as (keyof OverviewKpiValues)[];
+  const deltas: Partial<Record<keyof OverviewKpiValues, number | null>> = {};
+  for (const key of keys) {
+    deltas[key] = deltaPct(current[key], previous[key]);
+  }
+  return { current, previous, deltaPct: deltas };
+}
+
 export const PAGE_SIZE = 25;
 
 export const QUERY_SORT_KEYS = ["query", "clicks", "impressions", "ctr", "position"] as const;

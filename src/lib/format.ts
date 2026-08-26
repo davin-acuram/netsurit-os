@@ -1,5 +1,14 @@
 const numberFormatter = new Intl.NumberFormat("en-US");
 const compactFormatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+// Fixed to UTC -- these components are Server Components rendered once,
+// so a viewer-local timezone would be misleading rather than accurate.
+// dateStyle/timeStyle can't be combined with the timeZoneName component
+// option (Intl throws), so the "UTC" suffix is appended manually below.
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
 
 export function formatNumber(value: number): string {
   return numberFormatter.format(Math.round(value));
@@ -21,6 +30,10 @@ export function formatDuration(seconds: number): string {
 
 export function formatDecimal(value: number, digits = 1): string {
   return value.toFixed(digits);
+}
+
+export function formatDateTime(iso: string): string {
+  return `${dateTimeFormatter.format(new Date(iso))} UTC`;
 }
 
 export function formatDeltaPct(value: number | null | undefined): string {

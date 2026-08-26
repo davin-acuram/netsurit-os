@@ -136,6 +136,79 @@ export async function getKpiSummary(range: DateRange, withComparison: boolean): 
   return { current, previous, deltaPct: deltas };
 }
 
+export interface OverviewKpiValues {
+  sessions: number;
+  users: number;
+  conversions: number;
+}
+
+export interface OverviewKpiSummary {
+  current: OverviewKpiValues;
+  previous: OverviewKpiValues | null;
+  deltaPct: Partial<Record<keyof OverviewKpiValues, number | null>>;
+}
+
+interface RawOverviewKpiRow {
+  sessions: string | null;
+  users: string | null;
+  conversions: string | null;
+}
+
+// Overview's blended KPI row only needs these three GA4 numbers -- a
+// narrower query than fetchKpiValues, which also computes engagement
+// rate/duration/organic share the detail page needs but Overview doesn't.
+async function fetchOverviewKpiValues(range: DateRange): Promise<OverviewKpiValues> {
+  const result = await db.execute(sql`
+    SELECT
+      SUM(sessions) as sessions,
+      SUM(users) as users,
+      SUM(conversions) as conversions
+    FROM ga_daily_channel
+    WHERE date BETWEEN ${range.start} AND ${range.end}
+  `);
+  const rows = result as unknown as RawOverviewKpiRow[];
+  const row = rows[0];
+  return {
+    sessions: Number(row?.sessions ?? 0),
+    users: Number(row?.users ?? 0),
+    conversions: Number(row?.conversions ?? 0),
+  };
+}
+
+export async function getOverviewKpiSummary(range: DateRange, withComparison: boolean): Promise<OverviewKpiSummary> {
+  const current = await fetchOverviewKpiValues(range);
+  if (!withComparison) {
+    return { current, previous: null, deltaPct: {} };
+  }
+  const previous = await fetchOverviewKpiValues(getPreviousPeriod(range));
+  const keys = Object.keys(current) as (keyof OverviewKpiValues)[];
+  const deltas: Partial<Record<keyof OverviewKpiValues, number | null>> = {};
+  for (const key of keys) {
+    deltas[key] = deltaPct(current[key], previous[key]);
+  }
+  return { current, previous, deltaPct: deltas };
+}
+
+export interface DailySessions {
+  date: string;
+  sessions: number;
+}
+
+export async function getSessionsTrend(range: DateRange): Promise<DailySessions[]> {
+  const result = await db.execute(sql`
+    SELECT date, SUM(sessions) as sessions
+    FROM ga_daily_channel
+    WHERE date BETWEEN ${range.start} AND ${range.end}
+    GROUP BY date
+    ORDER BY date ASC
+  `);
+  const rows = result as unknown as { date: string; sessions: string }[];
+  return rows.map((r) => ({
+    date: typeof r.date === "string" ? r.date : new Date(r.date as unknown as string).toISOString().slice(0, 10),
+    sessions: Number(r.sessions),
+  }));
+}
+
 // Full history, ISO 8601 weeks (Postgres date_trunc('week', ...) is
 // Monday-start, matching ISO 8601) -- intentionally takes no date range,
 // this chart is independent of the page's date-range picker.
