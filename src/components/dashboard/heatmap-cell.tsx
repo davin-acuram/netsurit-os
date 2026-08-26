@@ -28,11 +28,22 @@ export function HeatmapCell({
   const isStrong = t >= STRONG_THRESHOLD;
 
   return (
-    <TableCell
-      className={cn("text-right font-medium tabular-nums", isStrong ? "text-white" : "text-foreground")}
-      style={{ backgroundColor: `color-mix(in oklch, var(--data-heatmap) ${alpha}%, transparent)` }}
-    >
-      {format(value)}
+    // The color lives on an inner chip, not the <td>'s own background --
+    // a <td> background fills the cell's padding too, so two adjacent
+    // heatmap columns would paint edge-to-edge with no visible gap
+    // between them no matter how much cell padding is set. The chip's
+    // own margin (from the cell's padding) is what creates the gap, and
+    // rounding it to --radius-xl matches the card radius used everywhere else.
+    <TableCell className="p-1.5">
+      <div
+        className={cn(
+          "rounded-xl px-2.5 py-1.5 text-right font-medium tabular-nums",
+          isStrong ? "text-white" : "text-foreground",
+        )}
+        style={{ backgroundColor: `color-mix(in oklch, var(--data-heatmap) ${alpha}%, transparent)` }}
+      >
+        {format(value)}
+      </div>
     </TableCell>
   );
 }

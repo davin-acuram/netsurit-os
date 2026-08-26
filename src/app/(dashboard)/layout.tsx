@@ -5,8 +5,8 @@ export default function DashboardLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="flex h-screen flex-col overflow-hidden md:flex-row">
       <RailNav />
-      <MainScrollArea className="mx-auto w-full max-w-[1600px] flex-1 overflow-y-auto px-6 py-8 lg:px-10">
-        {children}
+      <MainScrollArea>
+        <div className="mx-auto w-full max-w-[1600px] px-6 py-8 lg:px-10">{children}</div>
       </MainScrollArea>
     </div>
   );

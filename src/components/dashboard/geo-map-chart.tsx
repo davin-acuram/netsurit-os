@@ -59,35 +59,43 @@ export function GeoMapChart({ data }: { data: GeoMapDatum[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <ComposableMap
-        projection="geoEqualEarth"
-        projectionConfig={{ scale: 118 }}
-        width={800}
-        height={420}
-        className="w-full"
-      >
-        <Geographies geography={worldAtlas}>
-          {({ geographies }) =>
-            geographies.map((geo) => {
-              const name = geo.properties.name as string;
-              const sessions = sessionsByMapName.get(name);
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={fillFor(geo)}
-                  stroke={palette.stroke}
-                  strokeWidth={0.5}
-                >
-                  <title>{sessions ? `${name}: ${formatCompactNumber(sessions)} sessions` : name}</title>
-                </Geography>
-              );
-            })
-          }
-        </Geographies>
-      </ComposableMap>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex h-full w-full flex-col gap-3">
+      {/* min-h-0 lets this flex child actually shrink/grow within the
+          card's fixed height instead of being pushed to its SVG's
+          intrinsic size -- width/height:100% (not the plain width/height
+          attributes, which only control the viewBox's aspect ratio) is
+          what makes the map scale up to fill this box rather than
+          rendering small and centered within a mostly-empty card. */}
+      <div className="min-h-0 flex-1">
+        <ComposableMap
+          projection="geoEqualEarth"
+          projectionConfig={{ scale: 118 }}
+          width={800}
+          height={420}
+          style={{ width: "100%", height: "100%" }}
+        >
+          <Geographies geography={worldAtlas}>
+            {({ geographies }) =>
+              geographies.map((geo) => {
+                const name = geo.properties.name as string;
+                const sessions = sessionsByMapName.get(name);
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={fillFor(geo)}
+                    stroke={palette.stroke}
+                    strokeWidth={0.5}
+                  >
+                    <title>{sessions ? `${name}: ${formatCompactNumber(sessions)} sessions` : name}</title>
+                  </Geography>
+                );
+              })
+            }
+          </Geographies>
+        </ComposableMap>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
         <span>0</span>
         <div
           className="h-2 flex-1 rounded-full"

@@ -231,7 +231,7 @@ export async function GeoSection({ range }: { range: DateRange }) {
           <CardTitle>Traffic by country</CardTitle>
           <CardDescription>Sessions by country for the selected date range.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-1 items-center justify-center overflow-hidden">
+        <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <GeoMapChart data={mapRows} />
         </CardContent>
       </Card>

@@ -26,19 +26,49 @@ function formatMonthLabel(month: string): string {
   return new Date(Number(year), Number(monthNum) - 1, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
-// Speech-bubble callout: a rounded rect with a small downward-pointing
-// tail, positioned directly above the reference dot (which sits at the
-// top of the bar it annotates) so the tail touches the bar it references.
+// Balances a label across two lines by picking the word-boundary split
+// that minimizes the longer of the two resulting lines, rather than
+// hardcoding a break point per label.
+function wrapTwoLines(text: string): [string, string] {
+  const words = text.split(" ");
+  if (words.length <= 1) return [text, ""];
+  let bestSplit = 1;
+  let bestScore = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const line1Length = words.slice(0, i).join(" ").length;
+    const line2Length = words.slice(i).join(" ").length;
+    const score = Math.max(line1Length, line2Length);
+    if (score < bestScore) {
+      bestScore = score;
+      bestSplit = i;
+    }
+  }
+  return [words.slice(0, bestSplit).join(" "), words.slice(bestSplit).join(" ")];
+}
+
+// Card-styled callout: same surface, border, and radius token as the
+// dashboard's cards (--card / --border / --radius-xl), so it reads as
+// part of this UI rather than a generic dark tooltip. Ember is reserved
+// for the small marker dot at the bar top -- not the whole bubble --
+// with a card-colored ring around it so it still reads clearly against
+// the bar's own Ember fill. Text wraps to two lines so the bubble stays
+// narrow instead of stretching wide across the chart.
 function BubbleLabel(props: { viewBox?: { x?: number; y?: number }; text: string }) {
   const { viewBox, text } = props;
   if (viewBox?.x == null || viewBox?.y == null) return null;
   const { x, y } = viewBox;
 
-  const paddingX = 8;
+  const [line1, line2] = wrapTwoLines(text);
+  const paddingX = 10;
+  const paddingY = 6;
   const charWidth = 6;
-  const width = Math.round(Math.max(64, text.length * charWidth + paddingX * 2));
-  const height = 22;
-  const gap = 10; // px between the bar top and the tail tip
+  const lineHeight = 13;
+  const longestLine = Math.max(line1.length, line2.length);
+  const width = Math.round(Math.max(56, longestLine * charWidth + paddingX * 2));
+  const height = paddingY * 2 + lineHeight * 2;
+  const radius = 5; // --radius-xl
+  const markerRadius = 3.5;
+  const gap = 9; // px between the marker and the tail tip
   const tailHeight = 6;
   const tailHalfWidth = 5;
 
@@ -46,17 +76,29 @@ function BubbleLabel(props: { viewBox?: { x?: number; y?: number }; text: string
   const bubbleBottom = tailTipY - tailHeight;
   const bubbleTop = bubbleBottom - height;
   const left = x - width / 2;
+  const line1Y = bubbleTop + paddingY + lineHeight - 3;
+  const line2Y = line1Y + lineHeight;
 
   return (
     <g pointerEvents="none">
-      <rect x={left} y={bubbleTop} width={width} height={height} rx={6} fill="var(--foreground)" />
-      <path
-        d={`M ${x - tailHalfWidth} ${bubbleBottom} L ${x} ${tailTipY} L ${x + tailHalfWidth} ${bubbleBottom} Z`}
-        fill="var(--foreground)"
-      />
-      <text x={x} y={bubbleTop + height / 2 + 4} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--background)">
-        {text}
+      <g style={{ filter: "drop-shadow(0 1px 3px rgb(0 0 0 / 0.16))" }}>
+        {/* Tail drawn first and inset half a pixel into the rect so the
+            seam between the two shapes doesn't show through the shadow. */}
+        <path
+          d={`M ${x - tailHalfWidth} ${bubbleBottom - 0.5} L ${x} ${tailTipY} L ${x + tailHalfWidth} ${bubbleBottom - 0.5} Z`}
+          fill="var(--card)"
+        />
+        <rect x={left} y={bubbleTop} width={width} height={height} rx={radius} fill="var(--card)" stroke="var(--border)" />
+      </g>
+      <text x={x} y={line1Y} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--foreground)">
+        {line1}
       </text>
+      {line2 && (
+        <text x={x} y={line2Y} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--foreground)">
+          {line2}
+        </text>
+      )}
+      <circle cx={x} cy={y} r={markerRadius} fill="var(--primary)" stroke="var(--card)" strokeWidth={2} />
     </g>
   );
 }
