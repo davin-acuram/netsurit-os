@@ -19,6 +19,10 @@ export function formatDuration(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
+export function formatDecimal(value: number, digits = 1): string {
+  return value.toFixed(digits);
+}
+
 export function formatDeltaPct(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
   const sign = value > 0 ? "+" : "";
