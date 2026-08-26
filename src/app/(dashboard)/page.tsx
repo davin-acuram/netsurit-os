@@ -1,11 +1,18 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { DateRangePicker } from "@/components/dashboard/date-range-picker";
 import { PageTopBar } from "@/components/dashboard/page-top-bar";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { SectionCard } from "./analytics/sections";
-import { ChartSkeleton, KpiSection, KpiSkeleton, SyncSection, SyncSkeleton, TrendSection, type DateRange } from "./sections";
+import {
+  ChartSkeleton,
+  ConversionFunnelSection,
+  ConversionFunnelSkeleton,
+  KeyInsightsSection,
+  KeyInsightsSkeleton,
+  ScorecardsSection,
+  ScorecardsSkeleton,
+  TrendSection,
+  type DateRange,
+} from "./sections";
 
 function defaultRange(): { from: string; to: string } {
   const to = new Date();
@@ -32,8 +39,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         <DateRangePicker />
       </div>
 
-      <Suspense fallback={<KpiSkeleton />}>
-        <KpiSection range={range} />
+      <Suspense fallback={<ScorecardsSkeleton />}>
+        <ScorecardsSection range={range} />
       </Suspense>
 
       <SectionCard title="Sessions & clicks" description="GA4 sessions and Search Console clicks, daily.">
@@ -42,21 +49,13 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Suspense>
       </SectionCard>
 
-      <SectionCard title="Sync status">
-        <Suspense fallback={<SyncSkeleton />}>
-          <SyncSection />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Suspense fallback={<ConversionFunnelSkeleton />}>
+          <ConversionFunnelSection range={range} />
         </Suspense>
-      </SectionCard>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Link href="/analytics" className={cn(buttonVariants({ variant: "secondary" }), "justify-between")}>
-          View Analytics detail
-          <span aria-hidden="true">→</span>
-        </Link>
-        <Link href="/search-console" className={cn(buttonVariants({ variant: "secondary" }), "justify-between")}>
-          View Search Console detail
-          <span aria-hidden="true">→</span>
-        </Link>
+        <Suspense fallback={<KeyInsightsSkeleton />}>
+          <KeyInsightsSection range={range} />
+        </Suspense>
       </div>
     </div>
   );

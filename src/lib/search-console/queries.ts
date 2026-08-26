@@ -152,62 +152,6 @@ export async function getClicksImpressionsTrend(range: DateRange): Promise<Trend
   }));
 }
 
-export interface OverviewKpiValues {
-  clicks: number;
-  impressions: number;
-  position: number;
-}
-
-export interface OverviewKpiSummary {
-  current: OverviewKpiValues;
-  previous: OverviewKpiValues | null;
-  deltaPct: Partial<Record<keyof OverviewKpiValues, number | null>>;
-}
-
-interface RawOverviewKpiRow {
-  clicks: string | null;
-  impressions: string | null;
-  position_weighted: string | null;
-}
-
-// Overview's blended KPI row only needs clicks/impressions/position --
-// narrower than fetchKpiValues, which also computes CTR the detail page
-// shows but Overview doesn't.
-async function fetchOverviewKpiValues(range: DateRange): Promise<OverviewKpiValues> {
-  const result = await db.execute(sql`
-    SELECT
-      SUM(clicks) as clicks,
-      SUM(impressions) as impressions,
-      SUM(position * impressions) as position_weighted
-    FROM gsc_daily_query
-    WHERE date BETWEEN ${range.start} AND ${range.end}
-  `);
-  const rows = result as unknown as RawOverviewKpiRow[];
-  const row = rows[0];
-  const clicks = Number(row?.clicks ?? 0);
-  const impressions = Number(row?.impressions ?? 0);
-  const positionWeighted = Number(row?.position_weighted ?? 0);
-  return {
-    clicks,
-    impressions,
-    position: safeDivide(positionWeighted, impressions),
-  };
-}
-
-export async function getOverviewKpiSummary(range: DateRange, withComparison: boolean): Promise<OverviewKpiSummary> {
-  const current = await fetchOverviewKpiValues(range);
-  if (!withComparison) {
-    return { current, previous: null, deltaPct: {} };
-  }
-  const previous = await fetchOverviewKpiValues(getPreviousPeriod(range));
-  const keys = Object.keys(current) as (keyof OverviewKpiValues)[];
-  const deltas: Partial<Record<keyof OverviewKpiValues, number | null>> = {};
-  for (const key of keys) {
-    deltas[key] = deltaPct(current[key], previous[key]);
-  }
-  return { current, previous, deltaPct: deltas };
-}
-
 export const PAGE_SIZE = 25;
 
 export const QUERY_SORT_KEYS = ["query", "clicks", "impressions", "ctr", "position"] as const;
@@ -355,6 +299,106 @@ export async function getCountryBreakdown(range: DateRange): Promise<CountryRow[
     ctr: Number(r.ctr),
     position: Number(r.position),
   }));
+}
+
+export interface OpportunityCandidate {
+  query: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  position: number;
+}
+
+export interface KeyInsightsData {
+  totalClicks: number;
+  brandedClicks: number;
+  topNClicks: number;
+  // Top decile of queries by impression volume, capped to a small set --
+  // the benchmark-gap ranking to find the single best example happens in
+  // Node against the hardcoded CTR-by-position table
+  // (src/lib/insights/benchmarks.ts), which has no SQL equivalent worth
+  // building.
+  opportunityCandidates: OpportunityCandidate[];
+}
+
+const OPPORTUNITY_CANDIDATE_LIMIT = 50;
+
+// Backs all three Overview "key insights" that read gsc_daily_query
+// (branded-vs-non-branded split, top-N query concentration, and
+// high-impression/low-CTR opportunity candidates) in a single query. This
+// aggregates the whole table exactly once server-side and returns only a
+// handful of scalars plus a capped candidate list -- earlier versions
+// either ran three separate GROUP BY scans concurrently (slow enough under
+// Supabase's pooled connection to blow through its statement_timeout) or
+// returned one row per query for the whole range (tens of thousands of
+// rows transferred over the network on every load, for a link whose
+// latency this small a payload skips entirely).
+export async function getKeyInsightsData(
+  range: DateRange,
+  brandTerms: readonly string[],
+  topN: number,
+): Promise<KeyInsightsData> {
+  const patterns = brandTerms.map((t) => `%${t}%`);
+  const brandedCondition = sql.join(
+    patterns.map((p) => sql`query ILIKE ${p}`),
+    sql` OR `,
+  );
+  const result = await db.execute(sql`
+    WITH agg AS (
+      SELECT
+        query,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(clicks)::numeric / SUM(impressions) END as ctr,
+        CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(position * impressions) / SUM(impressions) END as position
+      FROM gsc_daily_query
+      WHERE date BETWEEN ${range.start} AND ${range.end}
+      GROUP BY query
+    ),
+    totals AS (
+      SELECT
+        COALESCE(SUM(clicks), 0) as total_clicks,
+        COALESCE(SUM(clicks) FILTER (WHERE ${brandedCondition}), 0) as branded_clicks
+      FROM agg
+    ),
+    top_n AS (
+      SELECT COALESCE(SUM(clicks), 0) as top_clicks FROM (SELECT clicks FROM agg ORDER BY clicks DESC LIMIT ${topN}) t
+    ),
+    threshold AS (
+      SELECT percentile_cont(0.9) WITHIN GROUP (ORDER BY impressions) as p90 FROM agg
+    ),
+    candidates AS (
+      SELECT agg.query, agg.impressions, agg.clicks, agg.ctr, agg.position
+      FROM agg, threshold
+      WHERE agg.impressions >= threshold.p90 AND agg.impressions > 0
+      ORDER BY agg.impressions DESC
+      LIMIT ${OPPORTUNITY_CANDIDATE_LIMIT}
+    )
+    SELECT
+      (SELECT total_clicks FROM totals) as total_clicks,
+      (SELECT branded_clicks FROM totals) as branded_clicks,
+      (SELECT top_clicks FROM top_n) as top_clicks,
+      (SELECT COALESCE(json_agg(candidates), '[]') FROM candidates) as candidates
+  `);
+  const rows = result as unknown as {
+    total_clicks: string;
+    branded_clicks: string;
+    top_clicks: string;
+    candidates: { query: string; impressions: number; clicks: number; ctr: number; position: number }[];
+  }[];
+  const row = rows[0];
+  return {
+    totalClicks: Number(row?.total_clicks ?? 0),
+    brandedClicks: Number(row?.branded_clicks ?? 0),
+    topNClicks: Number(row?.top_clicks ?? 0),
+    opportunityCandidates: (row?.candidates ?? []).map((c) => ({
+      query: c.query,
+      impressions: Number(c.impressions),
+      clicks: Number(c.clicks),
+      ctr: Number(c.ctr),
+      position: Number(c.position),
+    })),
+  };
 }
 
 export async function getDeviceBreakdown(range: DateRange): Promise<DeviceRow[]> {

@@ -195,6 +195,45 @@ export async function getOverviewKpiSummary(range: DateRange, withComparison: bo
   return { current, previous, deltaPct: deltas };
 }
 
+export interface OrganicChannelSummary {
+  sessions: number;
+  users: number;
+  newUsers: number;
+  conversions: number;
+}
+
+interface RawOrganicChannelRow {
+  sessions: string | null;
+  users: string | null;
+  new_users: string | null;
+  conversions: string | null;
+}
+
+// Narrow to the "Organic Search" channel only -- used by the Overview
+// conversion funnel (organic conversions/CVR, keeping every funnel stage
+// scoped to the same organic-search population as the GSC impressions/
+// clicks stages above it) and by the "new, non-branded visitors" insight
+// (new-user share of organic sessions).
+export async function getOrganicSearchChannelSummary(range: DateRange): Promise<OrganicChannelSummary> {
+  const result = await db.execute(sql`
+    SELECT
+      SUM(sessions) as sessions,
+      SUM(users) as users,
+      SUM(new_users) as new_users,
+      SUM(conversions) as conversions
+    FROM ga_daily_channel
+    WHERE channel = 'Organic Search' AND date BETWEEN ${range.start} AND ${range.end}
+  `);
+  const rows = result as unknown as RawOrganicChannelRow[];
+  const row = rows[0];
+  return {
+    sessions: Number(row?.sessions ?? 0),
+    users: Number(row?.users ?? 0),
+    newUsers: Number(row?.new_users ?? 0),
+    conversions: Number(row?.conversions ?? 0),
+  };
+}
+
 export interface DailySessions {
   date: string;
   sessions: number;
