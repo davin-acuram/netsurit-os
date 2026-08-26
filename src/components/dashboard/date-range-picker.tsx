@@ -1,19 +1,19 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Check } from "lucide-react";
 import type { DateRange as DayPickerRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const PRESETS = [
-  { value: "7", label: "Last 7 days" },
-  { value: "30", label: "Last 30 days" },
-  { value: "90", label: "Last 90 days" },
-  { value: "custom", label: "Custom range" },
+  { days: 7, label: "Last 7 days" },
+  { days: 14, label: "Last 14 days" },
+  { days: 30, label: "Last 30 days" },
+  { days: 90, label: "Last 90 days" },
 ] as const;
 
 function toIsoDate(d: Date): string {
@@ -27,19 +27,26 @@ function presetRange(days: number): { from: string; to: string } {
   return { from: toIsoDate(from), to: toIsoDate(to) };
 }
 
+function formatDisplay(from: string, to: string): string {
+  const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(from)} – ${fmt(to)}`;
+}
+
 export function DateRangePicker() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
+  const [pendingRange, setPendingRange] = useState<DayPickerRange | undefined>(undefined);
 
   const from = searchParams.get("from") ?? presetRange(30).from;
   const to = searchParams.get("to") ?? presetRange(30).to;
 
-  const activePreset = PRESETS.find((p) => {
-    if (p.value === "custom") return false;
-    return JSON.stringify(presetRange(Number(p.value))) === JSON.stringify({ from, to });
-  })?.value ?? "custom";
+  const activePresetDays = PRESETS.find((p) => {
+    const r = presetRange(p.days);
+    return r.from === from && r.to === to;
+  })?.days;
 
   function pushParams(next: { from: string; to: string }) {
     const params = new URLSearchParams(searchParams);
@@ -50,51 +57,74 @@ export function DateRangePicker() {
     });
   }
 
-  function handlePresetChange(value: string | null) {
-    if (!value || value === "custom") return;
-    pushParams(presetRange(Number(value)));
+  function handlePresetClick(days: number) {
+    pushParams(presetRange(days));
+    setOpen(false);
   }
 
-  function handleCalendarSelect(range: DayPickerRange | undefined) {
-    if (!range?.from) return;
-    const nextTo = range.to ?? range.from;
-    pushParams({ from: toIsoDate(range.from), to: toIsoDate(nextTo) });
+  function handleApplyCustom() {
+    if (!pendingRange?.from) return;
+    const nextTo = pendingRange.to ?? pendingRange.from;
+    pushParams({ from: toIsoDate(pendingRange.from), to: toIsoDate(nextTo) });
+    setOpen(false);
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      // Seed the calendar from the committed range each time it opens,
+      // not from whatever was left pending from a cancelled selection.
+      setPendingRange({ from: new Date(`${from}T00:00:00`), to: new Date(`${to}T00:00:00`) });
+    }
+    setOpen(next);
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3" data-pending={isPending || undefined}>
-      <Select value={activePreset} onValueChange={handlePresetChange}>
-        <SelectTrigger className="w-[160px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {PRESETS.map((p) => (
-            <SelectItem key={p.value} value={p.value}>
-              {p.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button variant="outline" className="justify-start text-left font-normal">
-              <CalendarIcon className="mr-2 size-4" />
-              {from} &ndash; {to}
-            </Button>
-          }
-        />
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="range"
-            defaultMonth={new Date(`${from}T00:00:00`)}
-            selected={{ from: new Date(`${from}T00:00:00`), to: new Date(`${to}T00:00:00`) }}
-            onSelect={handleCalendarSelect}
-            numberOfMonths={2}
-          />
-        </PopoverContent>
-      </Popover>
-    </div>
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        render={
+          <Button variant="outline" className="justify-start text-left font-normal">
+            <CalendarIcon className="mr-2 size-4" />
+            {formatDisplay(from, to)}
+          </Button>
+        }
+      />
+      <PopoverContent className="w-auto p-0" align="end">
+        <div className="flex">
+          <div className="flex w-40 flex-col gap-0.5 border-r border-border p-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.days}
+                type="button"
+                onClick={() => handlePresetClick(p.days)}
+                className={cn(
+                  "flex items-center justify-between rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-accent hover:text-foreground",
+                  activePresetDays === p.days ? "bg-primary/12 text-primary" : "text-muted-foreground",
+                )}
+              >
+                {p.label}
+                {activePresetDays === p.days && <Check className="size-3.5" />}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col">
+            <Calendar
+              mode="range"
+              defaultMonth={pendingRange?.from ?? new Date(`${from}T00:00:00`)}
+              selected={pendingRange}
+              onSelect={setPendingRange}
+              numberOfMonths={2}
+            />
+            <div className="flex items-center justify-end gap-2 border-t border-border p-3">
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={!pendingRange?.from} onClick={handleApplyCustom}>
+                Apply
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

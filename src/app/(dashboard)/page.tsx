@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { DateRangePicker } from "@/components/dashboard/date-range-picker";
+import { PageTopBar } from "@/components/dashboard/page-top-bar";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SectionCard } from "./analytics/sections";
@@ -22,6 +23,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
 
   return (
     <div className="space-y-8">
+      <PageTopBar page="Overview" />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Overview</h1>

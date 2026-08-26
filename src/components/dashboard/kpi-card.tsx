@@ -18,7 +18,7 @@ export function KpiCard({ label, value, deltaPct }: KpiCardProps) {
     <Card>
       <CardHeader>
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+        <CardTitle className="font-sans text-2xl font-semibold tabular-nums">{value}</CardTitle>
         {deltaPct !== undefined && (
           <div
             className={cn(

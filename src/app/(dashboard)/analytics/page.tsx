@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { DateRangePicker } from "@/components/dashboard/date-range-picker";
+import { PageTopBar } from "@/components/dashboard/page-top-bar";
 import type { DateRange } from "@/lib/google-analytics/queries";
 import {
   ChannelSection,
@@ -31,6 +32,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
 
   return (
     <div className="space-y-8">
+      <PageTopBar page="Analytics" />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Analytics</h1>
