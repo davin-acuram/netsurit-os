@@ -30,34 +30,51 @@ export interface DonutDatum {
 export function DonutChart({
   data,
   legendPosition = "none",
+  maxSlices,
 }: {
   data: DonutDatum[];
   /** "right" places a swatch+value legend beside the donut instead of the
    * default no-legend rendering other pages already rely on. */
   legendPosition?: "right" | "none";
+  /** When set, only the top N values (by value) are drawn as donut slices
+   * -- the legend still lists every entry, scrollable past 3. Leave unset
+   * to draw every entry (e.g. device breakdown, which never has more
+   * than a handful of categories anyway). */
+  maxSlices?: number;
 }) {
+  // Sorted by the value actually being plotted -- not whatever order the
+  // caller's query happened to return -- so the brand-accent slice always
+  // lands on the true top category and, when maxSlices is set, "top N"
+  // means top by this chart's own metric.
+  const sorted = [...data].sort((a, b) => b.value - a.value);
+  const sliceData = maxSlices ? sorted.slice(0, maxSlices) : sorted;
+  const colorByLabel = new Map(sorted.map((d, i) => [d.label, COLORS[i % COLORS.length]]));
+
   const config: ChartConfig = Object.fromEntries(
-    data.map((d, i) => [d.label, { label: d.label, color: COLORS[i % COLORS.length] }]),
+    sorted.map((d) => [d.label, { label: d.label, color: colorByLabel.get(d.label) }]),
   );
 
   const chart = (
     <ChartContainer
       config={config}
-      className={cn(legendPosition === "right" ? "h-[160px] w-[160px] shrink-0" : "mx-auto h-[260px] w-full")}
+      className={cn(legendPosition === "right" ? "h-[170px] w-[170px] shrink-0" : "mx-auto h-[260px] w-full")}
     >
       <PieChart>
         <ChartTooltip content={<ChartTooltipContent nameKey="label" hideLabel />} />
         <Pie
-          data={data}
+          data={sliceData}
           dataKey="value"
           nameKey="label"
-          innerRadius="60%"
+          innerRadius="51%"
           outerRadius="90%"
+          paddingAngle={3}
+          cornerRadius={3}
           strokeWidth={2}
+          stroke="var(--card)"
           isAnimationActive={false}
         >
-          {data.map((d, i) => (
-            <Cell key={d.label} fill={COLORS[i % COLORS.length]} />
+          {sliceData.map((d) => (
+            <Cell key={d.label} fill={colorByLabel.get(d.label)} />
           ))}
         </Pie>
       </PieChart>
@@ -71,11 +88,11 @@ export function DonutChart({
   return (
     <div className="flex items-center gap-4">
       {chart}
-      <ul className="flex min-w-0 flex-1 flex-col gap-2 text-sm">
-        {data.map((d, i) => (
+      <ul className="scroll-fade flex max-h-[170px] min-w-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 text-sm">
+        {sorted.map((d) => (
           <li key={d.label} className="flex items-start justify-between gap-2">
             <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-              <span className="mt-0.5 size-2.5 shrink-0 self-start rounded-[2px]" style={{ background: COLORS[i % COLORS.length] }} />
+              <span className="mt-0.5 size-2.5 shrink-0 self-start rounded-[2px]" style={{ background: colorByLabel.get(d.label) }} />
               <span className="break-words">{d.label}</span>
             </span>
             <span className="shrink-0 font-mono font-medium text-foreground tabular-nums">{formatCompactNumber(d.value)}</span>

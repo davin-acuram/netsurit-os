@@ -13,7 +13,6 @@ import {
   GeoSkeleton,
   KpiSection,
   KpiSkeleton,
-  LandingPageSection,
   NewUsersSection,
   SectionCard,
   TableSkeleton,
@@ -48,7 +47,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
         <KpiSection range={range} />
       </Suspense>
 
-      <SectionCard title="New users per month" description="24 months lookback period. This card is not affected by date range selector.">
+      <SectionCard title="New users per month" description="22 months lookback period. This card is not affected by date range selector.">
         <Suspense fallback={<ChartSkeleton />}>
           <NewUsersSection />
         </Suspense>
@@ -80,17 +79,9 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
         </Suspense>
       </SectionCard>
 
-      <SectionCard title="Landing page performance">
-        <Suspense fallback={<TableSkeleton />}>
-          <LandingPageSection range={range} />
-        </Suspense>
-      </SectionCard>
-
-      <SectionCard title="Geo breakdown" description="Top countries by sessions.">
-        <Suspense fallback={<GeoSkeleton />}>
-          <GeoSection range={range} />
-        </Suspense>
-      </SectionCard>
+      <Suspense fallback={<GeoSkeleton />}>
+        <GeoSection range={range} />
+      </Suspense>
     </div>
   );
 }

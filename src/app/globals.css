@@ -138,6 +138,39 @@
   --sidebar-ring: #f4364c;
 }
 
+/* Overlay-style, auto-hiding scrollbar for any scrollable region (the
+   page's main content area, and internal card scroll areas like the
+   donut legend list and the geo table body). Thin and transparent by
+   default so it never reserves visible "dead space"; the thumb only
+   paints in while the container is actively being scrolled (via the
+   .is-scrolling class, toggled by useScrollFade) or on hover, matching
+   the OS overlay-scrollbar behavior the rest of the dashboard assumes. */
+@utility scroll-fade {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+  }
+  &:hover,
+  &.is-scrolling {
+    scrollbar-color: var(--border) transparent;
+  }
+  &:hover::-webkit-scrollbar-thumb,
+  &.is-scrolling::-webkit-scrollbar-thumb {
+    background: var(--border);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

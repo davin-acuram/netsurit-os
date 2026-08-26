@@ -105,8 +105,8 @@ export function DateRangePicker() {
       <PopoverTrigger
         render={
           <Button
-            variant="outline"
-            className="justify-start border-border bg-card text-left font-normal shadow-sm ring-1 ring-foreground/10 hover:bg-muted"
+            variant="default"
+            className="justify-start rounded-xl! text-left font-normal shadow-sm"
           >
             <CalendarIcon className="mr-2 size-4" />
             {formatDisplay(from, to)}

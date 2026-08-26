@@ -214,13 +214,19 @@ export async function getSessionsTrend(range: DateRange): Promise<DailySessions[
   }));
 }
 
-// Rolling trailing-24-month window ending today -- intentionally takes no
+// Rolling trailing-22-month window ending today -- intentionally takes no
 // date range, this chart is independent of the page's date-range picker.
+// 22 months (not 24) is deliberate: a 24-month window pulls in
+// 2024-08/2024-09, and 2024-09 is a one-off historical spike (~4x every
+// other month, from a burst of first-party traffic before the current
+// tracking baseline was established) that would otherwise dominate the
+// chart's y-axis scale. Trimming to 22 months starts the window at
+// 2024-10, excluding both.
 export async function getNewUsersMonthlyTrend(): Promise<MonthlyNewUsers[]> {
   const result = await db.execute(sql`
     SELECT to_char(date_trunc('month', date), 'YYYY-MM') as month, SUM(new_users) as new_users
     FROM ga_daily_channel
-    WHERE date >= (CURRENT_DATE - INTERVAL '24 months')
+    WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
     GROUP BY month
     ORDER BY month ASC
   `);

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
-  ChartColumnBig,
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
@@ -27,9 +26,39 @@ import { cn } from "@/lib/utils";
 // and Sprout's leaf paths both fill cleanly; a plain magnifying-glass
 // Search icon wouldn't (it's just a stroked circle + line), so "Organic"
 // uses Sprout instead -- it also reads better for organic-search anyway.
+//
+// lucide's ChartColumnBig looked like the natural pick for Analytics, but
+// its markup mixes two closed bar rects with an *open* axis-line path
+// ("M3 3v16a2 2 0 0 0 2 2h16"). Toggling `fill-current` on the whole icon
+// also fills that open path -- SVG auto-closes an open path when filling
+// it, which drew a solid wedge across the icon instead of two solid bars.
+// This local copy of the same icon pins the axis path to fill="none" so
+// only the bar rects respond to the active/hover fill toggle.
+function AnalyticsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M3 3v16a2 2 0 0 0 2 2h16" fill="none" />
+      <rect x="15" y="5" width="4" height="12" rx="1" />
+      <rect x="7" y="8" width="4" height="9" rx="1" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/analytics", label: "Analytics", icon: ChartColumnBig },
+  { href: "/analytics", label: "Analytics", icon: AnalyticsIcon },
   { href: "/search-console", label: "Organic", icon: Sprout },
 ] as const;
 

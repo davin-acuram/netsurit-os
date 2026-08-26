@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { DonutChart } from "@/components/dashboard/donut-chart";
@@ -15,12 +16,10 @@ import {
   getGeoBreakdown,
   getGeoSessionsByCountry,
   getKpiSummary,
-  getLandingPageTable,
   getNewUsersMonthlyTrend,
   type ChannelRow,
   type DateRange,
   type GeoRow,
-  type LandingPageRow,
 } from "@/lib/google-analytics/queries";
 import { formatNumber, formatPercent } from "@/lib/format";
 
@@ -92,7 +91,7 @@ export async function EventsByChannelSection({ range }: { range: DateRange }) {
   if (rows.length === 0) {
     return <EmptyState />;
   }
-  return <DonutChart data={rows.map((r) => ({ label: r.channel, value: r.eventCount }))} legendPosition="right" />;
+  return <DonutChart data={rows.map((r) => ({ label: r.channel, value: r.eventCount }))} legendPosition="right" maxSlices={3} />;
 }
 
 export async function ConversionsByChannelSection({ range }: { range: DateRange }) {
@@ -106,7 +105,7 @@ export async function ConversionsByChannelSection({ range }: { range: DateRange 
   if (rows.length === 0) {
     return <EmptyState />;
   }
-  return <DonutChart data={rows.map((r) => ({ label: r.channel, value: r.conversions }))} legendPosition="right" />;
+  return <DonutChart data={rows.map((r) => ({ label: r.channel, value: r.conversions }))} legendPosition="right" maxSlices={3} />;
 }
 
 export async function DeviceSection({ range }: { range: DateRange }) {
@@ -179,29 +178,8 @@ export async function ChannelSection({ range }: { range: DateRange }) {
   );
 }
 
-const landingPageColumns: Column<LandingPageRow>[] = [
-  { key: "landingPage", label: "Landing page" },
-  { key: "sessions", label: "Sessions", align: "right", format: "number" },
-  { key: "engagementRate", label: "Engagement rate", align: "right", format: "percent" },
-  { key: "conversions", label: "Conversions", align: "right", format: "number" },
-];
-
 export function TableSkeleton() {
   return <Skeleton className="h-64 w-full" />;
-}
-
-export async function LandingPageSection({ range }: { range: DateRange }) {
-  let rows: LandingPageRow[];
-  try {
-    rows = await getLandingPageTable(range);
-  } catch (err) {
-    console.error(err);
-    return <ErrorState message="Couldn't load landing page performance." />;
-  }
-  if (rows.length === 0) {
-    return <EmptyState />;
-  }
-  return <SortableTable columns={landingPageColumns} rows={rows} defaultSortKey="sessions" />;
 }
 
 const geoColumns: Column<GeoRow>[] = [
@@ -214,11 +192,13 @@ const geoColumns: Column<GeoRow>[] = [
 export function GeoSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <Skeleton className="h-72 w-full lg:col-span-2" />
-      <Skeleton className="h-72 w-full" />
+      <Skeleton className="h-[440px] w-full lg:col-span-2" />
+      <Skeleton className="h-[440px] w-full" />
     </div>
   );
 }
+
+const GEO_CARD_HEIGHT = "h-[440px]";
 
 export async function GeoSection({ range }: { range: DateRange }) {
   let rows: GeoRow[];
@@ -234,10 +214,27 @@ export async function GeoSection({ range }: { range: DateRange }) {
   }
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <div className="lg:col-span-2">
-        <SortableTable columns={geoColumns} rows={rows} defaultSortKey="sessions" />
-      </div>
-      <GeoMapChart data={mapRows} />
+      <Card className={cn(GEO_CARD_HEIGHT, "flex flex-col lg:col-span-2")}>
+        <CardHeader>
+          <CardTitle>Top countries</CardTitle>
+          <CardDescription>Sessions, users, and engagement rate for the selected date range.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex-1 overflow-hidden">
+          <div className="scroll-fade h-full overflow-y-auto pr-1">
+            <SortableTable columns={geoColumns} rows={rows} defaultSortKey="sessions" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className={cn(GEO_CARD_HEIGHT, "flex flex-col")}>
+        <CardHeader>
+          <CardTitle>Traffic by country</CardTitle>
+          <CardDescription>Sessions by country for the selected date range.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-1 items-center justify-center overflow-hidden">
+          <GeoMapChart data={mapRows} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
