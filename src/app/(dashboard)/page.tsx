@@ -1,16 +1,13 @@
 import { Suspense } from "react";
 import { DateRangePicker } from "@/components/dashboard/date-range-picker";
 import { PageTopBar } from "@/components/dashboard/page-top-bar";
-import { SectionCard } from "./analytics/sections";
 import {
-  ChartSkeleton,
   ConversionFunnelSection,
   ConversionFunnelSkeleton,
   KeyInsightsSection,
   KeyInsightsSkeleton,
   ScorecardsSection,
   ScorecardsSkeleton,
-  TrendSection,
   type DateRange,
 } from "./sections";
 
@@ -42,15 +39,6 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       <Suspense fallback={<ScorecardsSkeleton />}>
         <ScorecardsSection range={range} />
       </Suspense>
-
-      <SectionCard
-        title="Sessions & clicks"
-        description="GA4 sessions and Search Console clicks, monthly, 22 months. This gauges total traffic movement driven by organic search. This card is not affected by the date range selector."
-      >
-        <Suspense fallback={<ChartSkeleton />}>
-          <TrendSection />
-        </Suspense>
-      </SectionCard>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Suspense fallback={<ConversionFunnelSkeleton />}>

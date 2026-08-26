@@ -1,7 +1,6 @@
 import { cache } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OverviewTrendChart, type OverviewTrendPoint } from "@/components/dashboard/overview-trend-chart";
 import { ScorecardGroup } from "@/components/dashboard/scorecard-group";
 import { ConversionFunnel, type FunnelStage } from "@/components/dashboard/conversion-funnel";
 import { KeyInsights, type InsightData } from "@/components/dashboard/key-insights";
@@ -9,11 +8,9 @@ import { EmptyState, ErrorState } from "@/components/dashboard/section-states";
 import {
   getOverviewKpiSummary as getGaOverviewKpiSummary,
   getOrganicSearchChannelSummary,
-  getSessionsMonthlyTrend,
   type DateRange as GaDateRange,
 } from "@/lib/google-analytics/queries";
 import {
-  getClicksMonthlyTrend,
   getKeyInsightsData,
   getKpiSummary as getGscKpiSummary,
   type DateRange as GscDateRange,
@@ -115,42 +112,6 @@ export async function ScorecardsSection({ range }: { range: DateRange }) {
       />
     </div>
   );
-}
-
-export function ChartSkeleton() {
-  return <Skeleton className="h-[280px] w-full" />;
-}
-
-// Rolling trailing-22-month window ending today, same as the Analytics
-// page's New Users chart -- intentionally takes no date range, this chart
-// is independent of the page's date-range picker.
-export async function TrendSection() {
-  let sessionsTrend, clicksTrend;
-  try {
-    [sessionsTrend, clicksTrend] = await Promise.all([getSessionsMonthlyTrend(), getClicksMonthlyTrend()]);
-  } catch (err) {
-    console.error(err);
-    return <ErrorState message="Couldn't load the combined trend." />;
-  }
-  if (sessionsTrend.length === 0 && clicksTrend.length === 0) {
-    return <EmptyState />;
-  }
-
-  const byMonth = new Map<string, OverviewTrendPoint>();
-  for (const s of sessionsTrend) {
-    byMonth.set(s.month, { month: s.month, sessions: s.sessions, clicks: 0 });
-  }
-  for (const c of clicksTrend) {
-    const existing = byMonth.get(c.month);
-    if (existing) {
-      existing.clicks = c.clicks;
-    } else {
-      byMonth.set(c.month, { month: c.month, sessions: 0, clicks: c.clicks });
-    }
-  }
-  const data = [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
-
-  return <OverviewTrendChart data={data} />;
 }
 
 export function ConversionFunnelSkeleton() {
