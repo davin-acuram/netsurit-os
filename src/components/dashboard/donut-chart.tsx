@@ -3,20 +3,21 @@
 import { Cell, Pie, PieChart } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
-// The theme's default --chart-* tokens are grayscale by design, which
-// makes a multi-slice donut unreadable -- use a distinct categorical
-// palette here instead of the app-wide theme tokens. Hex, not oklch():
+// Only the top (first) category gets the brand accent -- everything
+// else steps down a warm-neutral gray ramp instead of a rainbow of
+// hues, so one slice reads as "the highlighted one" rather than
+// competing categories all shouting for attention. Hex, not oklch():
 // SVG's fill presentation attribute doesn't reliably parse oklch() the
 // way a CSS custom property does, so slices silently failed to paint.
 const COLORS = [
-  "#e0763f",
-  "#3f7ce0",
-  "#4caf7a",
-  "#c060b0",
-  "#c9a227",
-  "#3fb8c9",
-  "#7c5fc4",
-  "#b0473f",
+  "#f4364c", // Ember -- top category only
+  "#6e6863",
+  "#8f8880",
+  "#a8a19b",
+  "#b9b2ac",
+  "#c9c3be",
+  "#d8d3ce",
+  "#e6e2de",
 ];
 
 export interface DonutDatum {

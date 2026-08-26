@@ -27,7 +27,6 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
   const fallback = defaultRange();
   const from = typeof params.from === "string" ? params.from : fallback.from;
   const to = typeof params.to === "string" ? params.to : fallback.to;
-  const compare = params.compare === "1";
   const range: DateRange = { start: from, end: to };
 
   return (
@@ -41,7 +40,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
       </div>
 
       <Suspense fallback={<KpiSkeleton />}>
-        <KpiSection range={range} compare={compare} />
+        <KpiSection range={range} />
       </Suspense>
 
       <SectionCard

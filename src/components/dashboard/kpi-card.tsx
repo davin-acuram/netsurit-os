@@ -24,7 +24,7 @@ export function KpiCard({ label, value, deltaPct }: KpiCardProps) {
             className={cn(
               "flex items-center gap-1 text-xs font-medium",
               isUp && "text-emerald-600 dark:text-emerald-400",
-              isDown && "text-red-600 dark:text-red-400",
+              isDown && "text-primary",
               !hasDelta && "text-muted-foreground",
             )}
           >

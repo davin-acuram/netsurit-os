@@ -23,10 +23,10 @@ import {
 } from "@/lib/search-console/queries";
 import { formatDecimal, formatNumber, formatPercent } from "@/lib/format";
 
-export async function KpiSection({ range, compare }: { range: DateRange; compare: boolean }) {
+export async function KpiSection({ range }: { range: DateRange }) {
   let summary;
   try {
-    summary = await getKpiSummary(range, compare);
+    summary = await getKpiSummary(range, true);
   } catch (err) {
     console.error(err);
     return <ErrorState message="Couldn't load KPI summary." />;
@@ -44,18 +44,10 @@ export async function KpiSection({ range, compare }: { range: DateRange; compare
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-      <KpiCard label="Clicks" value={formatNumber(current.clicks)} deltaPct={compare ? deltaPct.clicks : undefined} />
-      <KpiCard
-        label="Impressions"
-        value={formatNumber(current.impressions)}
-        deltaPct={compare ? deltaPct.impressions : undefined}
-      />
-      <KpiCard label="CTR" value={formatPercent(current.ctr)} deltaPct={compare ? deltaPct.ctr : undefined} />
-      <KpiCard
-        label="Avg position"
-        value={formatDecimal(current.position)}
-        deltaPct={compare ? positionDeltaPct : undefined}
-      />
+      <KpiCard label="Clicks" value={formatNumber(current.clicks)} deltaPct={deltaPct.clicks} />
+      <KpiCard label="Impressions" value={formatNumber(current.impressions)} deltaPct={deltaPct.impressions} />
+      <KpiCard label="CTR" value={formatPercent(current.ctr)} deltaPct={deltaPct.ctr} />
+      <KpiCard label="Avg position" value={formatDecimal(current.position)} deltaPct={positionDeltaPct} />
     </div>
   );
 }

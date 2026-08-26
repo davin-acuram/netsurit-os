@@ -18,7 +18,6 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const fallback = defaultRange();
   const from = typeof params.from === "string" ? params.from : fallback.from;
   const to = typeof params.to === "string" ? params.to : fallback.to;
-  const compare = params.compare === "1";
   const range: DateRange = { start: from, end: to };
 
   return (
@@ -32,7 +31,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </div>
 
       <Suspense fallback={<KpiSkeleton />}>
-        <KpiSection range={range} compare={compare} />
+        <KpiSection range={range} />
       </Suspense>
 
       <SectionCard title="Sessions & clicks" description="GA4 sessions and Search Console clicks, daily.">
@@ -48,11 +47,11 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </SectionCard>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Link href="/analytics" className={cn(buttonVariants({ variant: "outline" }), "justify-between")}>
+        <Link href="/analytics" className={cn(buttonVariants({ variant: "secondary" }), "justify-between")}>
           View Analytics detail
           <span aria-hidden="true">→</span>
         </Link>
-        <Link href="/search-console" className={cn(buttonVariants({ variant: "outline" }), "justify-between")}>
+        <Link href="/search-console" className={cn(buttonVariants({ variant: "secondary" }), "justify-between")}>
           View Search Console detail
           <span aria-hidden="true">→</span>
         </Link>

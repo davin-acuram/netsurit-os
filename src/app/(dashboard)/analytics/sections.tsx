@@ -30,10 +30,10 @@ export function KpiSkeleton() {
   );
 }
 
-export async function KpiSection({ range, compare }: { range: DateRange; compare: boolean }) {
+export async function KpiSection({ range }: { range: DateRange }) {
   let summary;
   try {
-    summary = await getKpiSummary(range, compare);
+    summary = await getKpiSummary(range, true);
   } catch (err) {
     console.error(err);
     return <ErrorState message="Couldn't load KPI summary." />;
@@ -45,13 +45,13 @@ export async function KpiSection({ range, compare }: { range: DateRange; compare
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
-      <KpiCard label="Sessions" value={formatNumber(current.sessions)} deltaPct={compare ? deltaPct.sessions : undefined} />
-      <KpiCard label="New users" value={formatNumber(current.newUsers)} deltaPct={compare ? deltaPct.newUsers : undefined} />
-      <KpiCard label="Engagement rate" value={formatPercent(current.engagementRate)} deltaPct={compare ? deltaPct.engagementRate : undefined} />
-      <KpiCard label="Conversions" value={formatNumber(current.conversions)} deltaPct={compare ? deltaPct.conversions : undefined} />
-      <KpiCard label="Conversion rate" value={formatPercent(current.conversionRate)} deltaPct={compare ? deltaPct.conversionRate : undefined} />
-      <KpiCard label="Avg engagement time" value={formatDuration(current.avgEngagementTime)} deltaPct={compare ? deltaPct.avgEngagementTime : undefined} />
-      <KpiCard label="% organic search" value={formatPercent(current.pctOrganicSearch)} deltaPct={compare ? deltaPct.pctOrganicSearch : undefined} />
+      <KpiCard label="Sessions" value={formatNumber(current.sessions)} deltaPct={deltaPct.sessions} />
+      <KpiCard label="New users" value={formatNumber(current.newUsers)} deltaPct={deltaPct.newUsers} />
+      <KpiCard label="Engagement rate" value={formatPercent(current.engagementRate)} deltaPct={deltaPct.engagementRate} />
+      <KpiCard label="Conversions" value={formatNumber(current.conversions)} deltaPct={deltaPct.conversions} />
+      <KpiCard label="Conversion rate" value={formatPercent(current.conversionRate)} deltaPct={deltaPct.conversionRate} />
+      <KpiCard label="Avg engagement time" value={formatDuration(current.avgEngagementTime)} deltaPct={deltaPct.avgEngagementTime} />
+      <KpiCard label="% organic search" value={formatPercent(current.pctOrganicSearch)} deltaPct={deltaPct.pctOrganicSearch} />
     </div>
   );
 }

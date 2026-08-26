@@ -38,12 +38,12 @@ export function KpiSkeleton() {
   );
 }
 
-export async function KpiSection({ range, compare }: { range: DateRange; compare: boolean }) {
+export async function KpiSection({ range }: { range: DateRange }) {
   let gaSummary, gscSummary;
   try {
     [gaSummary, gscSummary] = await Promise.all([
-      getGaOverviewKpiSummary(range, compare),
-      getGscOverviewKpiSummary(range, compare),
+      getGaOverviewKpiSummary(range, true),
+      getGscOverviewKpiSummary(range, true),
     ]);
   } catch (err) {
     console.error(err);
@@ -69,37 +69,17 @@ export async function KpiSection({ range, compare }: { range: DateRange; compare
       <div className="space-y-3">
         <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Analytics (GA4)</h3>
         <div className="grid grid-cols-3 gap-4">
-          <KpiCard
-            label="Sessions"
-            value={formatNumber(ga.sessions)}
-            deltaPct={compare ? gaSummary.deltaPct.sessions : undefined}
-          />
-          <KpiCard
-            label="Users"
-            value={formatNumber(ga.users)}
-            deltaPct={compare ? gaSummary.deltaPct.users : undefined}
-          />
-          <KpiCard
-            label="Conversions"
-            value={formatNumber(ga.conversions)}
-            deltaPct={compare ? gaSummary.deltaPct.conversions : undefined}
-          />
+          <KpiCard label="Sessions" value={formatNumber(ga.sessions)} deltaPct={gaSummary.deltaPct.sessions} />
+          <KpiCard label="Users" value={formatNumber(ga.users)} deltaPct={gaSummary.deltaPct.users} />
+          <KpiCard label="Conversions" value={formatNumber(ga.conversions)} deltaPct={gaSummary.deltaPct.conversions} />
         </div>
       </div>
       <div className="space-y-3">
         <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Search Console (GSC)</h3>
         <div className="grid grid-cols-3 gap-4">
-          <KpiCard
-            label="Clicks"
-            value={formatNumber(gsc.clicks)}
-            deltaPct={compare ? gscSummary.deltaPct.clicks : undefined}
-          />
-          <KpiCard
-            label="Impressions"
-            value={formatNumber(gsc.impressions)}
-            deltaPct={compare ? gscSummary.deltaPct.impressions : undefined}
-          />
-          <KpiCard label="Avg position" value={formatDecimal(gsc.position)} deltaPct={compare ? positionDeltaPct : undefined} />
+          <KpiCard label="Clicks" value={formatNumber(gsc.clicks)} deltaPct={gscSummary.deltaPct.clicks} />
+          <KpiCard label="Impressions" value={formatNumber(gsc.impressions)} deltaPct={gscSummary.deltaPct.impressions} />
+          <KpiCard label="Avg position" value={formatDecimal(gsc.position)} deltaPct={positionDeltaPct} />
         </div>
       </div>
     </div>
