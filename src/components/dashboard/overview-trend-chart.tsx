@@ -11,8 +11,11 @@ export interface OverviewTrendPoint {
 }
 
 const config: ChartConfig = {
+  // Same blue the geo choropleth and conversion funnel already use for
+  // sequential data fills (--data-heatmap) -- the dashboard's one
+  // established "blue" accent, not a new color.
   sessions: { label: "Sessions (GA4)", color: "var(--chart-1)" },
-  clicks: { label: "Clicks (GSC)", color: "var(--chart-2)" },
+  clicks: { label: "Clicks (GSC)", color: "var(--data-heatmap)" },
 };
 
 const LEGEND_ITEMS = [
@@ -25,7 +28,7 @@ const LEGEND_ITEMS = [
   {
     key: "clicks",
     label: "Clicks",
-    color: "var(--chart-2)",
+    color: "var(--data-heatmap)",
     description: "Organic search clicks recorded by Google Search Console.",
   },
 ] as const;
@@ -49,13 +52,31 @@ function TrendLegend() {
   );
 }
 
+// Rounds up to a "nice" number so the one visible tick doesn't read as an
+// arbitrary data-derived value.
+function niceCeiling(value: number): number {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  return Math.ceil(value / magnitude) * magnitude;
+}
+
 // Sessions and clicks differ by orders of magnitude, same reasoning as the
 // Search Console detail page's clicks/impressions chart -- separate Y axes
 // instead of one shared scale. Sessions reads as the "featured" series
 // (gradient-filled area, drawn last so it sits over the bars); clicks
 // reads as the secondary volume series (plain bars, drawn first).
+//
+// The sessions axis domain is deliberately padded far below the real data
+// range -- not because sessions can go negative, but so the line's actual
+// values only ever occupy the top ~30% of the chart's vertical space,
+// keeping it visually clear of the bars beneath it instead of crossing
+// through them. This only affects where the line is drawn; the tooltip
+// still reads the real underlying value.
 export function OverviewTrendChart({ data }: { data: OverviewTrendPoint[] }) {
   const gradientId = useId();
+  const sessionsMax = Math.max(1, ...data.map((d) => d.sessions));
+  const sessionsCeiling = niceCeiling(sessionsMax * 1.05);
+  const sessionsDomain: [number, number] = [-sessionsCeiling * 2.3, sessionsCeiling];
 
   return (
     <div className="flex flex-col">
@@ -75,7 +96,14 @@ export function OverviewTrendChart({ data }: { data: OverviewTrendPoint[] }) {
             minTickGap={40}
             tickFormatter={(value: string) => value.slice(5)}
           />
-          <YAxis yAxisId="sessions" tickLine={false} axisLine={false} width={40} />
+          <YAxis
+            yAxisId="sessions"
+            domain={sessionsDomain}
+            ticks={[0, sessionsCeiling]}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+          />
           <YAxis yAxisId="clicks" orientation="right" tickLine={false} axisLine={false} width={48} />
           <ChartTooltip content={<ChartTooltipContent />} />
           <Bar yAxisId="clicks" dataKey="clicks" fill="var(--color-clicks)" radius={[3, 3, 0, 0]} maxBarSize={28} />
@@ -86,6 +114,7 @@ export function OverviewTrendChart({ data }: { data: OverviewTrendPoint[] }) {
             stroke="var(--color-sessions)"
             strokeWidth={2}
             fill={`url(#${gradientId})`}
+            baseValue={0}
           />
         </ComposedChart>
       </ChartContainer>

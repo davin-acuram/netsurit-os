@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 
 export interface InsightData {
   eyebrow: string;
-  eyebrowTone: "flag" | "neutral";
+  eyebrowTone: "flag" | "neutral" | "positive";
   headline: string;
   figure: string;
   figureSub: string;
@@ -20,7 +20,13 @@ function toneTextClass(tone: InsightData["figureTone"]): string {
 }
 
 function dotClass(tone: InsightData["eyebrowTone"]): string {
-  return tone === "flag" ? "bg-primary" : "bg-muted-foreground";
+  if (tone === "flag") return "bg-primary";
+  if (tone === "positive") return "bg-emerald-600 dark:bg-emerald-400";
+  return "bg-muted-foreground";
+}
+
+function eyebrowTextClass(tone: InsightData["eyebrowTone"]): string {
+  return tone === "positive" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground";
 }
 
 function HeroInsight({ data }: { data: InsightData }) {
@@ -48,7 +54,12 @@ function InsightRow({ data }: { data: InsightData }) {
   return (
     <div className="flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
       <div className="min-w-0 space-y-1">
-        <div className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        <div
+          className={cn(
+            "flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase",
+            eyebrowTextClass(data.eyebrowTone),
+          )}
+        >
           <span className={cn("size-1.5 shrink-0 rounded-full", dotClass(data.eyebrowTone))} />
           {data.eyebrow}
         </div>

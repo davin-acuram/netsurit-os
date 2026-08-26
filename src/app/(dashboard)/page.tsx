@@ -52,7 +52,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Suspense>
       </SectionCard>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Suspense fallback={<ConversionFunnelSkeleton />}>
           <ConversionFunnelSection range={range} />
         </Suspense>

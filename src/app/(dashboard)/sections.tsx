@@ -151,7 +151,7 @@ export async function TrendSection({ range }: { range: DateRange }) {
 }
 
 export function ConversionFunnelSkeleton() {
-  return <Skeleton className="h-[280px] w-full lg:col-span-1" />;
+  return <Skeleton className="h-[280px] w-full lg:col-span-2" />;
 }
 
 // Every stage stays scoped to the organic-search population: GSC's
@@ -170,7 +170,7 @@ export async function ConversionFunnelSection({ range }: { range: DateRange }) {
   } catch (err) {
     console.error(err);
     return (
-      <Card className="lg:col-span-1">
+      <Card className="lg:col-span-2">
         <CardContent>
           <ErrorState message="Couldn't load the conversion funnel." />
         </CardContent>
@@ -203,12 +203,12 @@ export async function ConversionFunnelSection({ range }: { range: DateRange }) {
   ];
 
   return (
-    <Card className="lg:col-span-1">
+    <Card className="lg:col-span-2">
       <CardHeader>
         <CardTitle>Conversion funnel</CardTitle>
         <CardDescription>Selected date range · organic search, Search Console → GA4.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         {gsc.impressions === 0 && gaOrganic.sessions === 0 ? <EmptyState /> : <ConversionFunnel stages={stages} />}
       </CardContent>
     </Card>
@@ -216,7 +216,7 @@ export async function ConversionFunnelSection({ range }: { range: DateRange }) {
 }
 
 export function KeyInsightsSkeleton() {
-  return <Skeleton className="h-[280px] w-full lg:col-span-2" />;
+  return <Skeleton className="h-[280px] w-full lg:col-span-3" />;
 }
 
 // Top N is a judgment call, not a computed figure -- 5 already tells a
@@ -244,10 +244,10 @@ function bestOpportunityCandidate(candidates: OpportunityCandidate[]): Opportuni
 
 function KeyInsightsCard({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="overflow-hidden lg:col-span-2">
+    <Card className="overflow-hidden lg:col-span-3">
       <CardHeader>
         <CardTitle>Key insights</CardTitle>
-        <CardDescription>Computed from fixed rules against your synced data — not AI-generated.</CardDescription>
+        <CardDescription>Computed from fixed rules against your synced data. Not AI-generated.</CardDescription>
       </CardHeader>
       <CardContent className="px-0">{children}</CardContent>
     </Card>
@@ -255,12 +255,9 @@ function KeyInsightsCard({ children }: { children: React.ReactNode }) {
 }
 
 export async function KeyInsightsSection({ range }: { range: DateRange }) {
-  let insightsData, gaOrganic;
+  let insightsData;
   try {
-    [insightsData, gaOrganic] = await Promise.all([
-      getKeyInsightsData(range, BRAND_TERMS, QUERY_CONCENTRATION_TOP_N),
-      getOrganicSearchChannelSummaryCached(range),
-    ]);
+    insightsData = await getKeyInsightsData(range, BRAND_TERMS, QUERY_CONCENTRATION_TOP_N);
   } catch (err) {
     console.error(err);
     return (
@@ -286,12 +283,12 @@ export async function KeyInsightsSection({ range }: { range: DateRange }) {
     eyebrow: "Brand mix",
     eyebrowTone: aboveHealthy ? "flag" : "neutral",
     headline: aboveHealthy
-      ? `${formatPercent(brandedPct, 0)} of organic clicks are branded searches, vs ${formatPercent(nonBrandedPct, 0)} non-branded — an over-reliance on people who already know Netsurit`
-      : `${formatPercent(brandedPct, 0)} of organic clicks are branded searches, vs ${formatPercent(nonBrandedPct, 0)} non-branded — a healthy discovery mix`,
+      ? `${formatPercent(brandedPct, 0)} of organic clicks are branded searches and ${formatPercent(nonBrandedPct, 0)} are non-branded, an over-reliance on people who already know Netsurit`
+      : `${formatPercent(brandedPct, 0)} of organic clicks are branded searches and ${formatPercent(nonBrandedPct, 0)} are non-branded, a healthy discovery mix`,
     figure: formatPercent(brandedPct, 0),
     figureSub: `vs ${formatPercent(BRANDED_SHARE_HEALTHY_RANGE.min, 0)}–${formatPercent(BRANDED_SHARE_HEALTHY_RANGE.max, 0)} B2B services benchmark`,
     figureTone: aboveHealthy ? "negative" : "positive",
-    source: "Search Console · gsc_daily_query",
+    source: "Source: Search Console",
   };
 
   const rest: InsightData[] = [];
@@ -301,12 +298,12 @@ export async function KeyInsightsSection({ range }: { range: DateRange }) {
     const expected = expectedCtrForPosition(best.position);
     rest.push({
       eyebrow: "Opportunity",
-      eyebrowTone: "neutral",
-      headline: `"${best.query}" has ${formatNumber(best.impressions)} impressions but only ${formatNumber(best.clicks)} clicks (${formatPercent(best.ctr, 1)} CTR) vs an expected ${formatPercent(expected, 1)} at position ${formatDecimal(best.position)} — worth testing the title tag, meta description, or rich snippets`,
+      eyebrowTone: "positive",
+      headline: `"${best.query}" has ${formatNumber(best.impressions)} impressions but only ${formatNumber(best.clicks)} clicks (${formatPercent(best.ctr, 1)} CTR), well below the expected ${formatPercent(expected, 1)} at position ${formatDecimal(best.position)}. Worth testing the title tag, meta description, or rich snippets`,
       figure: formatPercent(best.ctr, 1),
       figureSub: `vs ${formatPercent(expected, 1)} expected`,
       figureTone: "negative",
-      source: "Search Console · gsc_daily_query",
+      source: "Source: Search Console",
     });
   }
 
@@ -318,19 +315,7 @@ export async function KeyInsightsSection({ range }: { range: DateRange }) {
     figure: formatPercent(concentrationPct, 0),
     figureSub: `query concentration, top ${QUERY_CONCENTRATION_TOP_N}`,
     figureTone: "negative",
-    source: "Search Console · gsc_daily_query",
-  });
-
-  const newUserShare = safeDivide(gaOrganic.newUsers, gaOrganic.users);
-  const estimatedSessions = Math.round(gaOrganic.sessions * nonBrandedPct * newUserShare);
-  rest.push({
-    eyebrow: "Estimate",
-    eyebrowTone: "neutral",
-    headline: `An estimated ~${formatNumber(estimatedSessions)} organic sessions come from new, non-branded visitors — the audience least familiar with Netsurit already`,
-    figure: `~${formatCompactNumber(estimatedSessions)}`,
-    figureSub: "modeled: non-branded click share × new-user rate",
-    figureTone: "neutral",
-    source: "GA4 + Search Console · modeled estimate",
+    source: "Source: Search Console",
   });
 
   return (
