@@ -1,5 +1,6 @@
 declare module "react-simple-maps" {
   import type { ReactNode, ComponentType, SVGProps } from "react";
+  import type { GeoProjection } from "d3-geo";
 
   export interface GeographyFeature {
     rsmKey: string;
@@ -9,7 +10,10 @@ declare module "react-simple-maps" {
   }
 
   export interface ComposableMapProps extends SVGProps<SVGSVGElement> {
-    projection?: string;
+    // A projection *function* (e.g. one already configured via
+    // d3-geo's fitSize/fitExtent) is used as-is; a string name falls
+    // back to react-simple-maps' own d3-geo lookup + projectionConfig.
+    projection?: string | GeoProjection;
     projectionConfig?: Record<string, unknown>;
     width?: number;
     height?: number;
