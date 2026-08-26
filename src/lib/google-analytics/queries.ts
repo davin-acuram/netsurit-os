@@ -26,6 +26,7 @@ export interface ChannelRow {
   channel: string;
   newUsers: number;
   sessions: number;
+  newUserPct: number;
   engagementRate: number;
   avgEngagementTime: number;
   conversions: number;
@@ -257,6 +258,7 @@ export async function getChannelBreakdown(range: DateRange): Promise<ChannelRow[
     SELECT
       channel,
       SUM(sessions) as sessions,
+      SUM(users) as users,
       SUM(new_users) as new_users,
       SUM(engaged_sessions) as engaged_sessions,
       SUM(conversions) as conversions,
@@ -269,6 +271,7 @@ export async function getChannelBreakdown(range: DateRange): Promise<ChannelRow[
   const rows = result as unknown as {
     channel: string;
     sessions: string;
+    users: string;
     new_users: string;
     engaged_sessions: string;
     conversions: string;
@@ -276,11 +279,13 @@ export async function getChannelBreakdown(range: DateRange): Promise<ChannelRow[
   }[];
   return rows.map((r) => {
     const sessions = Number(r.sessions);
+    const newUsers = Number(r.new_users);
     const conversions = Number(r.conversions);
     return {
       channel: r.channel,
-      newUsers: Number(r.new_users),
+      newUsers,
       sessions,
+      newUserPct: safeDivide(newUsers, Number(r.users)),
       engagementRate: safeDivide(Number(r.engaged_sessions), sessions),
       avgEngagementTime: safeDivide(Number(r.duration_weighted), sessions),
       conversions,

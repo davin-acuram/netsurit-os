@@ -25,7 +25,7 @@ export function formatPercent(value: number, digits = 1): string {
 export function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
-  return `${m}m ${s}s`;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 export function formatDecimal(value: number, digits = 1): string {

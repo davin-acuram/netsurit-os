@@ -21,7 +21,7 @@ import {
   type DateRange,
   type GeoRow,
 } from "@/lib/google-analytics/queries";
-import { formatNumber, formatPercent } from "@/lib/format";
+import { formatDuration, formatNumber, formatPercent } from "@/lib/format";
 
 export function KpiSkeleton() {
   return (
@@ -157,7 +157,9 @@ export async function ChannelSection({ range }: { range: DateRange }) {
           <TableHead>Channel</TableHead>
           <TableHead className="text-right">New users</TableHead>
           <TableHead className="text-right">Sessions</TableHead>
+          <TableHead className="text-right">New user %</TableHead>
           <TableHead className="text-right">Engagement rate</TableHead>
+          <TableHead className="text-right">Avg engagement time</TableHead>
           <TableHead className="text-right">Conversions</TableHead>
           <TableHead className="text-right">CVR</TableHead>
         </TableRow>
@@ -168,7 +170,9 @@ export async function ChannelSection({ range }: { range: DateRange }) {
             <TableCell className="font-medium">{r.channel}</TableCell>
             <HeatmapCell value={r.newUsers} min={newUsersRange.min} max={newUsersRange.max} format={formatNumber} />
             <HeatmapCell value={r.sessions} min={sessionsRange.min} max={sessionsRange.max} format={formatNumber} />
+            <TableCell className="text-right">{formatPercent(r.newUserPct)}</TableCell>
             <TableCell className="text-right">{formatPercent(r.engagementRate)}</TableCell>
+            <TableCell className="text-right">{formatDuration(r.avgEngagementTime)}</TableCell>
             <HeatmapCell value={r.conversions} min={conversionsRange.min} max={conversionsRange.max} format={formatNumber} />
             <TableCell className="text-right">{formatPercent(r.conversionRate)}</TableCell>
           </TableRow>
