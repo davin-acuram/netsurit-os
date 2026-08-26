@@ -72,11 +72,6 @@ function lerpColor(min: readonly [number, number, number], max: readonly [number
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-// A small inset so coastlines and the 0.5px country strokes don't touch
-// the card's edge pixel-for-pixel -- still fills essentially all of the
-// available space, just not literally edge-to-edge.
-const MAP_PADDING = 6;
-
 interface HoverInfo {
   name: string;
   sessions: number | undefined;
@@ -98,12 +93,15 @@ export function GeoMapChart({ data }: { data: GeoMapDatum[] }) {
   // fitExtent computes the scale + translate that makes the geography
   // fill exactly this box -- computed fresh whenever the measured size
   // changes, instead of a fixed scale tuned for one assumed canvas size.
+  // Fit to the full [0,0]-[width,height] extent with zero inset so the
+  // drawn geography reaches the SVG's true edges, flush with the legend
+  // bar beneath it.
   const projection = useMemo(() => {
     if (!size) return null;
     return geoEqualEarth().fitExtent(
       [
-        [MAP_PADDING, MAP_PADDING],
-        [size.width - MAP_PADDING, size.height - MAP_PADDING],
+        [0, 0],
+        [size.width, size.height],
       ],
       worldFeatures,
     );
