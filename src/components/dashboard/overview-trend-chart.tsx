@@ -5,9 +5,14 @@ import { Area, Bar, CartesianGrid, ComposedChart, XAxis, YAxis } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
 export interface OverviewTrendPoint {
-  date: string;
+  month: string; // YYYY-MM
   sessions: number;
   clicks: number;
+}
+
+function formatMonthLabel(month: string): string {
+  const [year, monthNum] = month.split("-");
+  return new Date(Number(year), Number(monthNum) - 1, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
 const config: ChartConfig = {
@@ -90,11 +95,11 @@ export function OverviewTrendChart({ data }: { data: OverviewTrendPoint[] }) {
           </defs>
           <CartesianGrid vertical={false} />
           <XAxis
-            dataKey="date"
+            dataKey="month"
             tickLine={false}
             axisLine={false}
-            minTickGap={40}
-            tickFormatter={(value: string) => value.slice(5)}
+            minTickGap={24}
+            tickFormatter={formatMonthLabel}
           />
           <YAxis
             yAxisId="sessions"
@@ -105,7 +110,14 @@ export function OverviewTrendChart({ data }: { data: OverviewTrendPoint[] }) {
             width={40}
           />
           <YAxis yAxisId="clicks" orientation="right" tickLine={false} axisLine={false} width={48} />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                labelKey="month"
+                labelFormatter={(_, payload) => formatMonthLabel(String(payload?.[0]?.payload?.month ?? ""))}
+              />
+            }
+          />
           <Bar yAxisId="clicks" dataKey="clicks" fill="var(--color-clicks)" radius={[3, 3, 0, 0]} maxBarSize={28} />
           <Area
             yAxisId="sessions"

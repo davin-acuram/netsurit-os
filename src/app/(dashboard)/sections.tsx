@@ -9,11 +9,11 @@ import { EmptyState, ErrorState } from "@/components/dashboard/section-states";
 import {
   getOverviewKpiSummary as getGaOverviewKpiSummary,
   getOrganicSearchChannelSummary,
-  getSessionsTrend,
+  getSessionsMonthlyTrend,
   type DateRange as GaDateRange,
 } from "@/lib/google-analytics/queries";
 import {
-  getClicksImpressionsTrend,
+  getClicksMonthlyTrend,
   getKeyInsightsData,
   getKpiSummary as getGscKpiSummary,
   type DateRange as GscDateRange,
@@ -121,10 +121,13 @@ export function ChartSkeleton() {
   return <Skeleton className="h-[280px] w-full" />;
 }
 
-export async function TrendSection({ range }: { range: DateRange }) {
+// Rolling trailing-22-month window ending today, same as the Analytics
+// page's New Users chart -- intentionally takes no date range, this chart
+// is independent of the page's date-range picker.
+export async function TrendSection() {
   let sessionsTrend, clicksTrend;
   try {
-    [sessionsTrend, clicksTrend] = await Promise.all([getSessionsTrend(range), getClicksImpressionsTrend(range)]);
+    [sessionsTrend, clicksTrend] = await Promise.all([getSessionsMonthlyTrend(), getClicksMonthlyTrend()]);
   } catch (err) {
     console.error(err);
     return <ErrorState message="Couldn't load the combined trend." />;
@@ -133,19 +136,19 @@ export async function TrendSection({ range }: { range: DateRange }) {
     return <EmptyState />;
   }
 
-  const byDate = new Map<string, OverviewTrendPoint>();
+  const byMonth = new Map<string, OverviewTrendPoint>();
   for (const s of sessionsTrend) {
-    byDate.set(s.date, { date: s.date, sessions: s.sessions, clicks: 0 });
+    byMonth.set(s.month, { month: s.month, sessions: s.sessions, clicks: 0 });
   }
   for (const c of clicksTrend) {
-    const existing = byDate.get(c.date);
+    const existing = byMonth.get(c.month);
     if (existing) {
       existing.clicks = c.clicks;
     } else {
-      byDate.set(c.date, { date: c.date, sessions: 0, clicks: c.clicks });
+      byMonth.set(c.month, { month: c.month, sessions: 0, clicks: c.clicks });
     }
   }
-  const data = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const data = [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
 
   return <OverviewTrendChart data={data} />;
 }

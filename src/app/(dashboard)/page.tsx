@@ -45,10 +45,10 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
 
       <SectionCard
         title="Sessions & clicks"
-        description="GA4 sessions and Search Console clicks, daily. This gauges total traffic movement driven by organic search."
+        description="GA4 sessions and Search Console clicks, monthly, 22 months. This gauges total traffic movement driven by organic search. This card is not affected by the date range selector."
       >
         <Suspense fallback={<ChartSkeleton />}>
-          <TrendSection range={range} />
+          <TrendSection />
         </Suspense>
       </SectionCard>
 

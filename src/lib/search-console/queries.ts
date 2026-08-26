@@ -152,6 +152,31 @@ export async function getClicksImpressionsTrend(range: DateRange): Promise<Trend
   }));
 }
 
+export interface MonthlyClicks {
+  month: string; // YYYY-MM
+  clicks: number;
+}
+
+// Same rolling trailing-22-month window as GA4's getSessionsMonthlyTrend/
+// getNewUsersMonthlyTrend, so the Overview sessions/clicks chart merges
+// two series that cover the exact same window. GSC's own history only
+// starts 2025-04, well inside this window, so earlier months simply come
+// back as 0 clicks -- accurate, not a bug.
+export async function getClicksMonthlyTrend(): Promise<MonthlyClicks[]> {
+  const result = await db.execute(sql`
+    SELECT to_char(date_trunc('month', date), 'YYYY-MM') as month, SUM(clicks) as clicks
+    FROM gsc_daily_query
+    WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
+    GROUP BY month
+    ORDER BY month ASC
+  `);
+  const rows = result as unknown as { month: string; clicks: string }[];
+  return rows.map((r) => ({
+    month: r.month,
+    clicks: Number(r.clicks),
+  }));
+}
+
 export const PAGE_SIZE = 25;
 
 export const QUERY_SORT_KEYS = ["query", "clicks", "impressions", "ctr", "position"] as const;

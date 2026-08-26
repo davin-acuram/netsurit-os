@@ -234,22 +234,26 @@ export async function getOrganicSearchChannelSummary(range: DateRange): Promise<
   };
 }
 
-export interface DailySessions {
-  date: string;
+export interface MonthlySessions {
+  month: string; // YYYY-MM
   sessions: number;
 }
 
-export async function getSessionsTrend(range: DateRange): Promise<DailySessions[]> {
+// Same rolling trailing-22-month window as getNewUsersMonthlyTrend below
+// (see that function's comment for why 22 and not 24) -- the 2024-09
+// spike shows up in sessions too (~4x every other month), so the same
+// window trims it out here as well.
+export async function getSessionsMonthlyTrend(): Promise<MonthlySessions[]> {
   const result = await db.execute(sql`
-    SELECT date, SUM(sessions) as sessions
+    SELECT to_char(date_trunc('month', date), 'YYYY-MM') as month, SUM(sessions) as sessions
     FROM ga_daily_channel
-    WHERE date BETWEEN ${range.start} AND ${range.end}
-    GROUP BY date
-    ORDER BY date ASC
+    WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
+    GROUP BY month
+    ORDER BY month ASC
   `);
-  const rows = result as unknown as { date: string; sessions: string }[];
+  const rows = result as unknown as { month: string; sessions: string }[];
   return rows.map((r) => ({
-    date: typeof r.date === "string" ? r.date : new Date(r.date as unknown as string).toISOString().slice(0, 10),
+    month: r.month,
     sessions: Number(r.sessions),
   }));
 }
