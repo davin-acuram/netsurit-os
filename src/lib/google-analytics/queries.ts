@@ -53,9 +53,14 @@ export interface GeoRow {
   engagementRate: number;
 }
 
-export interface WeeklyNewUsers {
-  weekStart: string;
+export interface MonthlyNewUsers {
+  month: string; // YYYY-MM
   newUsers: number;
+}
+
+export interface ChannelEventRow {
+  channel: string;
+  eventCount: number;
 }
 
 function safeDivide(numerator: number, denominator: number): number {
@@ -209,20 +214,35 @@ export async function getSessionsTrend(range: DateRange): Promise<DailySessions[
   }));
 }
 
-// Full history, ISO 8601 weeks (Postgres date_trunc('week', ...) is
-// Monday-start, matching ISO 8601) -- intentionally takes no date range,
-// this chart is independent of the page's date-range picker.
-export async function getNewUsersWeeklyTrend(): Promise<WeeklyNewUsers[]> {
+// Rolling trailing-24-month window ending today -- intentionally takes no
+// date range, this chart is independent of the page's date-range picker.
+export async function getNewUsersMonthlyTrend(): Promise<MonthlyNewUsers[]> {
   const result = await db.execute(sql`
-    SELECT date_trunc('week', date)::date as week_start, SUM(new_users) as new_users
+    SELECT to_char(date_trunc('month', date), 'YYYY-MM') as month, SUM(new_users) as new_users
     FROM ga_daily_channel
-    GROUP BY week_start
-    ORDER BY week_start ASC
+    WHERE date >= (CURRENT_DATE - INTERVAL '24 months')
+    GROUP BY month
+    ORDER BY month ASC
   `);
-  const rows = result as unknown as { week_start: string; new_users: string }[];
+  const rows = result as unknown as { month: string; new_users: string }[];
   return rows.map((r) => ({
-    weekStart: typeof r.week_start === "string" ? r.week_start : new Date(r.week_start as unknown as string).toISOString().slice(0, 10),
+    month: r.month,
     newUsers: Number(r.new_users),
+  }));
+}
+
+export async function getChannelEventBreakdown(range: DateRange): Promise<ChannelEventRow[]> {
+  const result = await db.execute(sql`
+    SELECT channel, SUM(event_count) as event_count
+    FROM ga_daily_channel
+    WHERE date BETWEEN ${range.start} AND ${range.end}
+    GROUP BY channel
+    ORDER BY event_count DESC
+  `);
+  const rows = result as unknown as { channel: string; event_count: string }[];
+  return rows.map((r) => ({
+    channel: r.channel,
+    eventCount: Number(r.event_count),
   }));
 }
 
@@ -318,6 +338,25 @@ export async function getLandingPageTable(range: DateRange): Promise<LandingPage
       conversions: Number(r.conversions),
     };
   });
+}
+
+export interface GeoSessionsRow {
+  country: string;
+  sessions: number;
+}
+
+// No LIMIT -- the choropleth needs every country with traffic, unlike the
+// table above which only surfaces the top GEO_LIMIT rows.
+export async function getGeoSessionsByCountry(range: DateRange): Promise<GeoSessionsRow[]> {
+  const result = await db.execute(sql`
+    SELECT country, SUM(sessions) as sessions
+    FROM ga_daily_geo
+    WHERE date BETWEEN ${range.start} AND ${range.end}
+    GROUP BY country
+    ORDER BY sessions DESC
+  `);
+  const rows = result as unknown as { country: string; sessions: string }[];
+  return rows.map((r) => ({ country: r.country, sessions: Number(r.sessions) }));
 }
 
 const GEO_LIMIT = 15;

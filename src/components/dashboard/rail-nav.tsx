@@ -106,7 +106,7 @@ function NavList({ expanded, onNavigate }: { expanded: boolean; onNavigate?: () 
             onClick={onNavigate}
             title={expanded ? undefined : item.label}
             className={cn(
-              "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
               expanded ? "justify-start" : "justify-center",
               active ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-primary/12 hover:text-primary",
             )}

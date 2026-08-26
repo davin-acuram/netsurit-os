@@ -5,14 +5,17 @@ import type { DateRange } from "@/lib/google-analytics/queries";
 import {
   ChannelSection,
   ChartSkeleton,
+  ConversionsByChannelSection,
   DeviceSection,
+  DonutSkeleton,
+  EventsByChannelSection,
   GeoSection,
+  GeoSkeleton,
   KpiSection,
   KpiSkeleton,
   LandingPageSection,
-  NewUsersTrendSection,
+  NewUsersSection,
   SectionCard,
-  BreakdownSkeleton,
   TableSkeleton,
 } from "./sections";
 
@@ -45,28 +48,37 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
         <KpiSection range={range} />
       </Suspense>
 
-      <SectionCard
-        title="New users, weekly"
-        description={`Weekly, full history since Apr 2023 — not affected by the date range above.`}
-      >
+      <SectionCard title="New users per month" description="24 months lookback period. This card is not affected by date range selector.">
         <Suspense fallback={<ChartSkeleton />}>
-          <NewUsersTrendSection />
+          <NewUsersSection />
         </Suspense>
       </SectionCard>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SectionCard title="Channel breakdown">
-          <Suspense fallback={<BreakdownSkeleton />}>
-            <ChannelSection range={range} />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <SectionCard title="Where key actions come from" description="All events by channel.">
+          <Suspense fallback={<DonutSkeleton />}>
+            <EventsByChannelSection range={range} />
           </Suspense>
         </SectionCard>
 
-        <SectionCard title="Device breakdown">
-          <Suspense fallback={<BreakdownSkeleton />}>
+        <SectionCard title="Where key business comes from" description="Conversions by channel.">
+          <Suspense fallback={<DonutSkeleton />}>
+            <ConversionsByChannelSection range={range} />
+          </Suspense>
+        </SectionCard>
+
+        <SectionCard title="Traffic by device" description="Sessions by device category.">
+          <Suspense fallback={<DonutSkeleton />}>
             <DeviceSection range={range} />
           </Suspense>
         </SectionCard>
       </div>
+
+      <SectionCard title="Channel breakdown">
+        <Suspense fallback={<TableSkeleton />}>
+          <ChannelSection range={range} />
+        </Suspense>
+      </SectionCard>
 
       <SectionCard title="Landing page performance">
         <Suspense fallback={<TableSkeleton />}>
@@ -75,7 +87,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
       </SectionCard>
 
       <SectionCard title="Geo breakdown" description="Top countries by sessions.">
-        <Suspense fallback={<TableSkeleton />}>
+        <Suspense fallback={<GeoSkeleton />}>
           <GeoSection range={range} />
         </Suspense>
       </SectionCard>

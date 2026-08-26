@@ -9,13 +9,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-const PRESETS = [
-  { days: 7, label: "Last 7 days" },
-  { days: 14, label: "Last 14 days" },
-  { days: 30, label: "Last 30 days" },
-  { days: 90, label: "Last 90 days" },
-] as const;
-
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -26,6 +19,35 @@ function presetRange(days: number): { from: string; to: string } {
   from.setDate(from.getDate() - (days - 1));
   return { from: toIsoDate(from), to: toIsoDate(to) };
 }
+
+function thisMonthRange(): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from: toIsoDate(from), to: toIsoDate(now) };
+}
+
+function lastMonthRange(): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), 0);
+  return { from: toIsoDate(from), to: toIsoDate(to) };
+}
+
+function thisYearRange(): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), 0, 1);
+  return { from: toIsoDate(from), to: toIsoDate(now) };
+}
+
+const PRESETS = [
+  { id: "7", label: "Last 7 days", getRange: () => presetRange(7) },
+  { id: "14", label: "Last 14 days", getRange: () => presetRange(14) },
+  { id: "30", label: "Last 30 days", getRange: () => presetRange(30) },
+  { id: "90", label: "Last 90 days", getRange: () => presetRange(90) },
+  { id: "this-month", label: "This month", getRange: thisMonthRange },
+  { id: "last-month", label: "Last month", getRange: lastMonthRange },
+  { id: "this-year", label: "This year", getRange: thisYearRange },
+] as const;
 
 function formatDisplay(from: string, to: string): string {
   const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -43,10 +65,10 @@ export function DateRangePicker() {
   const from = searchParams.get("from") ?? presetRange(30).from;
   const to = searchParams.get("to") ?? presetRange(30).to;
 
-  const activePresetDays = PRESETS.find((p) => {
-    const r = presetRange(p.days);
+  const activePresetId = PRESETS.find((p) => {
+    const r = p.getRange();
     return r.from === from && r.to === to;
-  })?.days;
+  })?.id;
 
   function pushParams(next: { from: string; to: string }) {
     const params = new URLSearchParams(searchParams);
@@ -57,8 +79,8 @@ export function DateRangePicker() {
     });
   }
 
-  function handlePresetClick(days: number) {
-    pushParams(presetRange(days));
+  function handlePresetClick(getRange: () => { from: string; to: string }) {
+    pushParams(getRange());
     setOpen(false);
   }
 
@@ -82,7 +104,10 @@ export function DateRangePicker() {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
-          <Button variant="outline" className="justify-start text-left font-normal">
+          <Button
+            variant="outline"
+            className="justify-start border-border bg-card text-left font-normal shadow-sm ring-1 ring-foreground/10 hover:bg-muted"
+          >
             <CalendarIcon className="mr-2 size-4" />
             {formatDisplay(from, to)}
           </Button>
@@ -93,16 +118,16 @@ export function DateRangePicker() {
           <div className="flex w-40 flex-col gap-0.5 border-r border-border p-2">
             {PRESETS.map((p) => (
               <button
-                key={p.days}
+                key={p.id}
                 type="button"
-                onClick={() => handlePresetClick(p.days)}
+                onClick={() => handlePresetClick(p.getRange)}
                 className={cn(
                   "flex items-center justify-between rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-accent hover:text-foreground",
-                  activePresetDays === p.days ? "bg-primary/12 text-primary" : "text-muted-foreground",
+                  activePresetId === p.id ? "bg-primary/12 text-primary" : "text-muted-foreground",
                 )}
               >
                 {p.label}
-                {activePresetDays === p.days && <Check className="size-3.5" />}
+                {activePresetId === p.id && <Check className="size-3.5" />}
               </button>
             ))}
           </div>

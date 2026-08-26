@@ -2,6 +2,8 @@
 
 import { Cell, Pie, PieChart } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { formatCompactNumber } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 // Only the top (first) category gets the brand accent -- everything
 // else steps down a warm-neutral gray ramp instead of a rainbow of
@@ -25,21 +27,32 @@ export interface DonutDatum {
   value: number;
 }
 
-export function DonutChart({ data }: { data: DonutDatum[] }) {
+export function DonutChart({
+  data,
+  legendPosition = "none",
+}: {
+  data: DonutDatum[];
+  /** "right" places a swatch+value legend beside the donut instead of the
+   * default no-legend rendering other pages already rely on. */
+  legendPosition?: "right" | "none";
+}) {
   const config: ChartConfig = Object.fromEntries(
     data.map((d, i) => [d.label, { label: d.label, color: COLORS[i % COLORS.length] }]),
   );
 
-  return (
-    <ChartContainer config={config} className="mx-auto h-[260px] w-full">
+  const chart = (
+    <ChartContainer
+      config={config}
+      className={cn(legendPosition === "right" ? "h-[160px] w-[160px] shrink-0" : "mx-auto h-[260px] w-full")}
+    >
       <PieChart>
         <ChartTooltip content={<ChartTooltipContent nameKey="label" hideLabel />} />
         <Pie
           data={data}
           dataKey="value"
           nameKey="label"
-          innerRadius={60}
-          outerRadius={90}
+          innerRadius="60%"
+          outerRadius="90%"
           strokeWidth={2}
           isAnimationActive={false}
         >
@@ -49,5 +62,26 @@ export function DonutChart({ data }: { data: DonutDatum[] }) {
         </Pie>
       </PieChart>
     </ChartContainer>
+  );
+
+  if (legendPosition !== "right") {
+    return chart;
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      {chart}
+      <ul className="flex min-w-0 flex-1 flex-col gap-2 text-sm">
+        {data.map((d, i) => (
+          <li key={d.label} className="flex items-start justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+              <span className="mt-0.5 size-2.5 shrink-0 self-start rounded-[2px]" style={{ background: COLORS[i % COLORS.length] }} />
+              <span className="break-words">{d.label}</span>
+            </span>
+            <span className="shrink-0 font-mono font-medium text-foreground tabular-nums">{formatCompactNumber(d.value)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

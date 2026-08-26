@@ -42,7 +42,11 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  /* Card radius is intentionally decoupled from the --radius scale above --
+     it's the single source of truth for card corners (Card, CardHeader,
+     CardFooter) and the rail nav's active/hover pill, per the "uniform
+     5px radius" design pass. Update here, not per component. */
+  --radius-xl: 5px;
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
@@ -84,6 +88,10 @@
   --chart-3: #b9b2ac;
   --chart-4: #8f8880;
   --chart-5: #d8d3ce;
+  /* Ember reads as an alert/negative color when used as a heatmap fill
+     (it's the palette's "danger" token elsewhere), so table heatmaps and
+     the geo choropleth use a dedicated neutral blue intensity ramp instead. */
+  --data-heatmap: #3b6fd6;
   --radius: 0.75rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #1c1a19;
@@ -119,6 +127,7 @@
   --chart-3: #7a746f;
   --chart-4: #56514d;
   --chart-5: #3a3634;
+  --data-heatmap: #5b8def;
   --sidebar: #1c1a1a;
   --sidebar-foreground: #f5f3f1;
   --sidebar-primary: #f4364c;
