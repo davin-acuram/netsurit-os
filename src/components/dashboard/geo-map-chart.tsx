@@ -33,43 +33,31 @@ function useIsDarkMode(): boolean {
   );
 }
 
-interface MapBox {
+interface Size {
   width: number;
   height: number;
-  left: number;
 }
 
-// The legend bar is narrower than the card's full width -- it sits
-// between the "0" and max-value labels -- so the map has to match the
-// *bar's* measured box (width and left offset), not the outer
-// container's, or their edges won't line up. One ResizeObserver on the
-// outer wrapper re-measures both the bar (for width/left) and the map
-// slot (for height) whenever the layout changes.
-function useMapBox() {
-  const outerRef = useRef<HTMLDivElement>(null);
-  const mapSlotRef = useRef<HTMLDivElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<MapBox | null>(null);
+// Measures the actual rendered box a ref is attached to -- the map's
+// projection has to fit *this*, not a hardcoded canvas size, or it only
+// fills whatever fraction of the real container its assumed size
+// happened to match.
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState<Size | null>(null);
 
   useEffect(() => {
-    const outer = outerRef.current;
-    const mapSlot = mapSlotRef.current;
-    const bar = barRef.current;
-    if (!outer || !mapSlot || !bar) return;
-
-    const observer = new ResizeObserver(() => {
-      const outerRect = outer.getBoundingClientRect();
-      const mapSlotRect = mapSlot.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      if (barRect.width > 0 && mapSlotRect.height > 0) {
-        setBox({ width: barRect.width, height: mapSlotRect.height, left: barRect.left - outerRect.left });
-      }
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setSize({ width, height });
     });
-    observer.observe(outer);
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  return { outerRef, mapSlotRef, barRef, box };
+  return [ref, size] as const;
 }
 
 const PALETTE = {
@@ -85,8 +73,8 @@ function lerpColor(min: readonly [number, number, number], max: readonly [number
 }
 
 // A small inset so coastlines and the 0.5px country strokes don't touch
-// the bar's edge pixel-for-pixel -- still fills essentially all of the
-// aligned width, just not literally edge-to-edge.
+// the card's edge pixel-for-pixel -- still fills essentially all of the
+// available space, just not literally edge-to-edge.
 const MAP_PADDING = 6;
 
 interface HoverInfo {
@@ -99,7 +87,7 @@ interface HoverInfo {
 export function GeoMapChart({ data }: { data: GeoMapDatum[] }) {
   const isDark = useIsDarkMode();
   const palette = isDark ? PALETTE.dark : PALETTE.light;
-  const { outerRef, mapSlotRef, barRef, box } = useMapBox();
+  const [mapSlotRef, size] = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<HoverInfo | null>(null);
 
   const worldFeatures = useMemo(() => {
@@ -108,18 +96,18 @@ export function GeoMapChart({ data }: { data: GeoMapDatum[] }) {
   }, []);
 
   // fitExtent computes the scale + translate that makes the geography
-  // fill exactly this box -- computed fresh whenever the measured box
+  // fill exactly this box -- computed fresh whenever the measured size
   // changes, instead of a fixed scale tuned for one assumed canvas size.
   const projection = useMemo(() => {
-    if (!box) return null;
+    if (!size) return null;
     return geoEqualEarth().fitExtent(
       [
         [MAP_PADDING, MAP_PADDING],
-        [box.width - MAP_PADDING, box.height - MAP_PADDING],
+        [size.width - MAP_PADDING, size.height - MAP_PADDING],
       ],
       worldFeatures,
     );
-  }, [box, worldFeatures]);
+  }, [size, worldFeatures]);
 
   const sessionsByMapName = new Map<string, number>();
   // The topojson dataset's own names ("United States of America") don't
@@ -143,53 +131,62 @@ export function GeoMapChart({ data }: { data: GeoMapDatum[] }) {
   }
 
   return (
-    <div ref={outerRef} className="flex h-full w-full flex-col gap-3">
+    <div className="flex h-full w-full flex-col gap-3">
       {/* min-h-0 lets this flex child actually shrink/grow within the
           card's fixed height instead of being pushed to its SVG's
-          intrinsic size. The map itself is sized/offset to box (the
-          legend bar's measured width + left edge, not this slot's full
-          width) so the two read as one aligned unit. */}
+          intrinsic size. The map itself sizes to this slot's own
+          measured box (ComposableMap's width/height, and therefore its
+          viewBox, are set to that exact size) so nothing gets
+          letterboxed. */}
       <div ref={mapSlotRef} className="min-h-0 flex-1">
-        {box && projection && (
-          <div style={{ width: box.width, height: "100%", marginLeft: box.left }}>
-            <ComposableMap
-              projection={projection}
-              width={box.width}
-              height={box.height}
-              style={{ width: "100%", height: "100%" }}
-            >
-              <Geographies geography={worldAtlas}>
-                {({ geographies }) =>
-                  geographies.map((geo) => {
-                    const mapName = geo.properties.name as string;
-                    const sessions = sessionsByMapName.get(mapName);
-                    const displayName = originalNameByMapName.get(mapName) ?? mapName;
-                    return (
-                      <Geography
-                        key={geo.rsmKey}
-                        geography={geo}
-                        fill={fillFor(geo)}
-                        stroke={palette.stroke}
-                        strokeWidth={0.5}
-                        onMouseMove={(e) => setHover({ name: displayName, sessions, x: e.clientX, y: e.clientY })}
-                        onMouseLeave={() => setHover(null)}
-                      />
-                    );
-                  })
-                }
-              </Geographies>
-            </ComposableMap>
-          </div>
+        {size && projection && (
+          <ComposableMap
+            projection={projection}
+            width={size.width}
+            height={size.height}
+            style={{ width: "100%", height: "100%" }}
+          >
+            <Geographies geography={worldAtlas}>
+              {({ geographies }) =>
+                geographies.map((geo) => {
+                  const mapName = geo.properties.name as string;
+                  const sessions = sessionsByMapName.get(mapName);
+                  const displayName = originalNameByMapName.get(mapName) ?? mapName;
+                  return (
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      fill={fillFor(geo)}
+                      stroke={palette.stroke}
+                      strokeWidth={0.5}
+                      onMouseMove={(e) => setHover({ name: displayName, sessions, x: e.clientX, y: e.clientY })}
+                      onMouseLeave={() => setHover(null)}
+                    />
+                  );
+                })
+              }
+            </Geographies>
+          </ComposableMap>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-        <span>0</span>
+      {/* The "0"/max labels sit on their own line above the bar instead
+          of as flex siblings beside it -- as inline flex siblings they
+          ate a fixed chunk of the row's width via their own text size +
+          gaps, which is a much bigger proportion of a narrow card than a
+          wide one. That silently shrank the bar (and therefore the map,
+          which matches the bar) well below the card's actual available
+          width at anything less than a very wide viewport. A plain
+          w-full bar guarantees it always matches the map slot's width
+          exactly, at any container size. */}
+      <div className="shrink-0">
+        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+          <span>0</span>
+          <span>{formatCompactNumber(max)}</span>
+        </div>
         <div
-          ref={barRef}
-          className="h-2 flex-1 rounded-full"
+          className="h-2 w-full rounded-full"
           style={{ background: `linear-gradient(to right, ${lerpColor(palette.min, palette.max, 0)}, ${lerpColor(palette.min, palette.max, 1)})` }}
         />
-        <span>{formatCompactNumber(max)}</span>
       </div>
       {/* Matches ChartTooltipContent's styling (recharts tooltips
           elsewhere in the dashboard) so this reads as the same tooltip
