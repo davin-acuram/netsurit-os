@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { BRAND_TERMS } from "@/lib/insights/brand-terms";
@@ -15,19 +16,26 @@ export type SortDir = "asc" | "desc";
 // the same way getKeyInsightsData does.
 export type QuerySegment = "branded" | "nonbranded";
 
-// OR-joined case-insensitive substring test against BRAND_TERMS. Safe to
-// interpolate: every fragment is a parameterized bind, and the term list
-// is a compile-time constant, never request input.
-function brandedQueryCondition(): SQL {
+// Case-insensitive "does this query contain a brand term" test, as an
+// OR-chain of `ILIKE '%term%'` against the given column. Every caller
+// applies this to an already-GROUP BY query rollup (~17k distinct queries
+// for a 30-day range), never the raw ~130k daily rows -- on the rollup the
+// ILIKE chain is a simple substring scan and costs ~0.5s; a POSIX regex
+// (`~*`) was measured 2-3x slower there, and filtering the daily rows
+// before grouping is slower still. Safe to interpolate: fragments are
+// parameterized binds and BRAND_TERMS is a compile-time constant.
+function brandedQueryCondition(column: SQL = sql`query`): SQL {
   return sql.join(
-    BRAND_TERMS.map((t) => sql`query ILIKE ${`%${t}%`}`),
+    BRAND_TERMS.map((t) => sql`${column} ILIKE ${`%${t}%`}`),
     sql` OR `,
   );
 }
 
+// Applied in the OUTER query against a grouped CTE (aliased `cur`), not in
+// the daily-rows WHERE -- see brandedQueryCondition.
 function segmentFilter(segment: QuerySegment): SQL {
-  const cond = brandedQueryCondition();
-  return segment === "branded" ? sql`AND (${cond})` : sql`AND NOT (${cond})`;
+  const cond = brandedQueryCondition(sql`cur.query`);
+  return segment === "branded" ? sql`WHERE (${cond})` : sql`WHERE NOT (${cond})`;
 }
 
 export interface GscKpiValues {
@@ -35,7 +43,9 @@ export interface GscKpiValues {
   impressions: number;
   ctr: number;
   position: number;
-  // Share of organic clicks in the range coming from non-branded queries.
+  // Raw click count from non-branded queries in the range.
+  nonBrandedClicks: number;
+  // ...and that same count as a share of all organic clicks.
   nonBrandedClickShare: number;
 }
 
@@ -62,6 +72,10 @@ export interface QueryRow {
   impressions: number;
   ctr: number;
   position: number;
+  // Average position in the previous equivalent period minus this
+  // period's -- positive means the query moved UP the results (improved).
+  // null when the query had no impressions in the previous period.
+  positionDelta: number | null;
 }
 
 export interface PageRow {
@@ -70,6 +84,10 @@ export interface PageRow {
   impressions: number;
   ctr: number;
   position: number;
+  // The single query that drove the most clicks to this page in the
+  // range (ties broken by impressions, then alphabetically). null when no
+  // date x page x query data is synced for the range yet.
+  topQuery: string | null;
 }
 
 export interface CountryRow {
@@ -129,15 +147,28 @@ interface RawKpiRow {
 // from the summed numerator/denominator rather than summing the
 // per-day/per-query values, and weight position by impressions the
 // same way GA weights engagement rate by sessions.
+//
+// The brand test runs against a per_query rollup, not the raw daily rows:
+// collapsing ~130k daily rows to ~17k distinct queries first cuts the
+// regex-match work by ~8x (measured ~3s -> ~0.5s for this query).
 async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
   const result = await db.execute(sql`
+    WITH per_query AS (
+      SELECT
+        query,
+        SUM(clicks) as clicks,
+        SUM(impressions) as impressions,
+        SUM(position * impressions) as position_weighted
+      FROM gsc_daily_query
+      WHERE date BETWEEN ${range.start} AND ${range.end}
+      GROUP BY query
+    )
     SELECT
-      SUM(clicks) as clicks,
-      SUM(impressions) as impressions,
-      SUM(position * impressions) as position_weighted,
-      SUM(clicks) FILTER (WHERE NOT (${brandedQueryCondition()})) as nonbranded_clicks
-    FROM gsc_daily_query
-    WHERE date BETWEEN ${range.start} AND ${range.end}
+      COALESCE(SUM(clicks), 0) as clicks,
+      COALESCE(SUM(impressions), 0) as impressions,
+      COALESCE(SUM(position_weighted), 0) as position_weighted,
+      COALESCE(SUM(clicks) FILTER (WHERE NOT (${brandedQueryCondition()})), 0) as nonbranded_clicks
+    FROM per_query
   `);
   const rows = result as unknown as RawKpiRow[];
   const row = rows[0];
@@ -151,16 +182,22 @@ async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
     impressions,
     ctr: safeDivide(clicks, impressions),
     position: safeDivide(positionWeighted, impressions),
+    nonBrandedClicks,
     nonBrandedClickShare: safeDivide(nonBrandedClicks, clicks),
   };
 }
 
 export async function getKpiSummary(range: DateRange, withComparison: boolean): Promise<GscKpiSummary> {
-  const current = await fetchKpiValues(range);
   if (!withComparison) {
-    return { current, previous: null, deltaPct: {} };
+    return { current: await fetchKpiValues(range), previous: null, deltaPct: {} };
   }
-  const previous = await fetchKpiValues(getPreviousPeriod(range));
+  // Current and previous periods are independent scans -- run them together
+  // rather than back to back (this was the single biggest serial wait on
+  // both detail pages and the Overview scorecards).
+  const [current, previous] = await Promise.all([
+    fetchKpiValues(range),
+    fetchKpiValues(getPreviousPeriod(range)),
+  ]);
   const keys = Object.keys(current) as (keyof GscKpiValues)[];
   const deltas: Partial<Record<keyof GscKpiValues, number | null>> = {};
   for (const key of keys) {
@@ -175,24 +212,33 @@ export async function getKpiSummary(range: DateRange, withComparison: boolean): 
 // begins 2025-04-13, so the window currently returns fewer than 22 months
 // and lengthens naturally as history accumulates; leading empty months
 // are not synthesized.
-export async function getClicksImpressionsMonthlyTrend(): Promise<MonthlyClicksImpressions[]> {
-  const result = await db.execute(sql`
-    SELECT
-      to_char(date_trunc('month', date), 'YYYY-MM') as month,
-      SUM(clicks) as clicks,
-      SUM(impressions) as impressions
-    FROM gsc_daily_query
-    WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
-    GROUP BY month
-    ORDER BY month ASC
-  `);
-  const rows = result as unknown as { month: string; clicks: string; impressions: string }[];
-  return rows.map((r) => ({
-    month: r.month,
-    clicks: Number(r.clicks),
-    impressions: Number(r.impressions),
-  }));
-}
+// Scanning ~2M rows (22 months, the whole table) on every page load was
+// ~4.6s. The result only changes when a sync lands new daily rows, and
+// it's bucketed by month and detached from the date picker -- an hour of
+// staleness is invisible. unstable_cache keeps it in the Next data cache
+// (shared across requests / instances) between revalidations.
+export const getClicksImpressionsMonthlyTrend = unstable_cache(
+  async (): Promise<MonthlyClicksImpressions[]> => {
+    const result = await db.execute(sql`
+      SELECT
+        to_char(date_trunc('month', date), 'YYYY-MM') as month,
+        SUM(clicks) as clicks,
+        SUM(impressions) as impressions
+      FROM gsc_daily_query
+      WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
+      GROUP BY month
+      ORDER BY month ASC
+    `);
+    const rows = result as unknown as { month: string; clicks: string; impressions: string }[];
+    return rows.map((r) => ({
+      month: r.month,
+      clicks: Number(r.clicks),
+      impressions: Number(r.impressions),
+    }));
+  },
+  ["gsc-clicks-impressions-monthly-trend"],
+  { revalidate: 3600 },
+);
 
 // Buckets queries by their impression-weighted average position over the
 // range (same position calc as getTopQueries). Bucketed SQL-side; only
@@ -280,8 +326,13 @@ export async function getTopQueries(
 ): Promise<PaginatedResult<QueryRow>> {
   const offset = (page - 1) * PAGE_SIZE;
   const column = QUERY_SORT_COLUMNS[sortKey];
+  const prev = getPreviousPeriod(range);
+  // Group both periods' daily rows to one row per query first, THEN apply
+  // the brand filter to that ~17k-row rollup (see brandedQueryCondition).
+  // COUNT(*) OVER() runs after the filter and before LIMIT, so the total
+  // reflects the segment, not the whole table.
   const result = await db.execute(sql`
-    WITH agg AS (
+    WITH cur AS (
       SELECT
         query,
         SUM(clicks) as clicks,
@@ -290,23 +341,36 @@ export async function getTopQueries(
         CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(position * impressions) / SUM(impressions) END as position
       FROM gsc_daily_query
       WHERE date BETWEEN ${range.start} AND ${range.end}
-      ${segmentFilter(segment)}
+      GROUP BY query
+    ),
+    prev AS (
+      SELECT
+        query,
+        CASE WHEN SUM(impressions) = 0 THEN NULL ELSE SUM(position * impressions) / SUM(impressions) END as position
+      FROM gsc_daily_query
+      WHERE date BETWEEN ${prev.start} AND ${prev.end}
       GROUP BY query
     )
-    SELECT *, COUNT(*) OVER() as total_count
-    FROM agg
+    SELECT cur.*, prev.position as prev_position, COUNT(*) OVER() as total_count
+    FROM cur LEFT JOIN prev USING (query)
+    ${segmentFilter(segment)}
     ORDER BY ${orderByFragment(column, sortDir)}
     LIMIT ${PAGE_SIZE} OFFSET ${offset}
   `);
-  const rows = result as unknown as (RawTopRow & { query: string })[];
+  const rows = result as unknown as (RawTopRow & { query: string; prev_position: string | null })[];
   return {
-    rows: rows.map((r) => ({
-      query: r.query,
-      clicks: Number(r.clicks),
-      impressions: Number(r.impressions),
-      ctr: Number(r.ctr),
-      position: Number(r.position),
-    })),
+    rows: rows.map((r) => {
+      const position = Number(r.position);
+      const prevPosition = r.prev_position === null ? null : Number(r.prev_position);
+      return {
+        query: r.query,
+        clicks: Number(r.clicks),
+        impressions: Number(r.impressions),
+        ctr: Number(r.ctr),
+        position,
+        positionDelta: prevPosition === null ? null : prevPosition - position,
+      };
+    }),
     total: rows.length > 0 ? Number(rows[0].total_count) : 0,
   };
 }
@@ -319,6 +383,10 @@ export async function getTopPages(
 ): Promise<PaginatedResult<PageRow>> {
   const offset = (page - 1) * PAGE_SIZE;
   const column = PAGE_SORT_COLUMNS[sortKey];
+  // The page metrics come from gsc_daily_page; the "top query" per page
+  // needs gsc_daily_page_query, which is bigger. Paginate the page list
+  // first, then a LATERAL sub-select finds rank-1 query for just the 25
+  // pages on screen (seeks by page via gsc_daily_page_query_page_date_idx).
   const result = await db.execute(sql`
     WITH agg AS (
       SELECT
@@ -326,17 +394,27 @@ export async function getTopPages(
         SUM(clicks) as clicks,
         SUM(impressions) as impressions,
         CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(clicks)::numeric / SUM(impressions) END as ctr,
-        CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(position * impressions) / SUM(impressions) END as position
+        CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(position * impressions) / SUM(impressions) END as position,
+        COUNT(*) OVER() as total_count
       FROM gsc_daily_page
       WHERE date BETWEEN ${range.start} AND ${range.end}
       GROUP BY page
+      ORDER BY ${orderByFragment(column, sortDir)}
+      LIMIT ${PAGE_SIZE} OFFSET ${offset}
     )
-    SELECT *, COUNT(*) OVER() as total_count
+    SELECT agg.*, tq.query as top_query
     FROM agg
+    LEFT JOIN LATERAL (
+      SELECT query
+      FROM gsc_daily_page_query
+      WHERE page = agg.page AND date BETWEEN ${range.start} AND ${range.end}
+      GROUP BY query
+      ORDER BY SUM(clicks) DESC, SUM(impressions) DESC, query ASC
+      LIMIT 1
+    ) tq ON true
     ORDER BY ${orderByFragment(column, sortDir)}
-    LIMIT ${PAGE_SIZE} OFFSET ${offset}
   `);
-  const rows = result as unknown as (RawTopRow & { page: string })[];
+  const rows = result as unknown as (RawTopRow & { page: string; top_query: string | null })[];
   return {
     rows: rows.map((r) => ({
       page: r.page,
@@ -344,6 +422,7 @@ export async function getTopPages(
       impressions: Number(r.impressions),
       ctr: Number(r.ctr),
       position: Number(r.position),
+      topQuery: r.top_query ?? null,
     })),
     total: rows.length > 0 ? Number(rows[0].total_count) : 0,
   };

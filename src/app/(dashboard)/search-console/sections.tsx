@@ -29,8 +29,8 @@ import { formatDecimal, formatNumber, formatPercent } from "@/lib/format";
 
 export function KpiSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-      {Array.from({ length: 5 }).map((_, i) => (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+      {Array.from({ length: 6 }).map((_, i) => (
         <Skeleton key={i} className="h-24" />
       ))}
     </div>
@@ -57,11 +57,16 @@ export async function KpiSection({ range }: { range: DateRange }) {
     deltaPct.position === null || deltaPct.position === undefined ? deltaPct.position : -deltaPct.position;
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
       <KpiCard label="Impressions" value={formatNumber(current.impressions)} deltaPct={deltaPct.impressions} />
       <KpiCard label="Clicks" value={formatNumber(current.clicks)} deltaPct={deltaPct.clicks} />
       <KpiCard label="CTR" value={formatPercent(current.ctr)} deltaPct={deltaPct.ctr} />
       <KpiCard label="Avg. position" value={formatDecimal(current.position)} deltaPct={positionDeltaPct} />
+      <KpiCard
+        label="Non-branded clicks"
+        value={formatNumber(current.nonBrandedClicks)}
+        deltaPct={deltaPct.nonBrandedClicks}
+      />
       <KpiCard
         label="Non-branded click share"
         value={formatPercent(current.nonBrandedClickShare)}
@@ -92,6 +97,10 @@ const queryColumns: PaginatedColumn<QueryRow>[] = [
   { key: "clicks", label: "Clicks", align: "right", format: "number", heatmap: true },
   { key: "ctr", label: "CTR", align: "right", format: "percent" },
   { key: "position", label: "Position", align: "right", format: "decimal" },
+  // vs. the previous equivalent period. positionDelta is already oriented
+  // so positive = moved up the results (improved), matching the inverted
+  // treatment on the Avg. position KPI card.
+  { key: "positionDelta", label: "Pos. vs prev", align: "right", delta: true },
 ];
 
 export async function QueriesSection({
@@ -135,6 +144,7 @@ export async function QueriesSection({
 
 const pageColumns: PaginatedColumn<PageRow>[] = [
   { key: "page", label: "Page" },
+  { key: "topQuery", label: "Top query", sortable: false },
   { key: "impressions", label: "Impressions", align: "right", format: "number", heatmap: true },
   { key: "clicks", label: "Clicks", align: "right", format: "number", heatmap: true },
   { key: "ctr", label: "CTR", align: "right", format: "percent" },

@@ -5,6 +5,7 @@ import {
   gscDailyCountry,
   gscDailyDevice,
   gscDailyPage,
+  gscDailyPageQuery,
   gscDailyQuery,
   syncRuns,
 } from "@/db/schema";
@@ -78,6 +79,18 @@ function mapPageRows(rows: GscRow[]) {
   return rows.map((r) => ({
     date: r.keys[0],
     page: r.keys[1],
+    clicks: Math.round(r.clicks),
+    impressions: Math.round(r.impressions),
+    ctr: String(r.ctr),
+    position: String(r.position),
+  }));
+}
+
+function mapPageQueryRows(rows: GscRow[]) {
+  return rows.map((r) => ({
+    date: r.keys[0],
+    page: r.keys[1],
+    query: r.keys[2],
     clicks: Math.round(r.clicks),
     impressions: Math.round(r.impressions),
     ctr: String(r.ctr),
@@ -175,6 +188,20 @@ export async function syncGsc(range: DateRange): Promise<{ rowsSynced: number }>
     }
   } catch (err) {
     errors.push(`page: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  try {
+    const mapped = mapPageQueryRows(await fetchAllRows(range, ["date", "page", "query"]));
+    if (mapped.length > 0) {
+      rowsSynced += await upsertInBatches(
+        gscDailyPageQuery,
+        mapped,
+        [gscDailyPageQuery.date, gscDailyPageQuery.page, gscDailyPageQuery.query],
+        upsertMetricSet,
+      );
+    }
+  } catch (err) {
+    errors.push(`page_query: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   try {

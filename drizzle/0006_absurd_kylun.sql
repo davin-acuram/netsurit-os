@@ -1,0 +1,1 @@
+CREATE INDEX "gsc_daily_page_query_page_date_idx" ON "gsc_daily_page_query" USING btree ("page","date");

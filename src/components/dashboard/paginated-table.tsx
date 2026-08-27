@@ -19,6 +19,35 @@ const FORMATTERS: Record<PaginatedColumnFormat, (value: unknown) => string> = {
   decimal: (v) => formatDecimal(v as number),
 };
 
+// Mirrors the KpiCard delta styling: emerald for a positive (better)
+// move, the brand red for a negative one, muted dash when unknown.
+function DeltaCell({ value, align }: { value: number | null; align?: "left" | "right" }) {
+  const cls = cn(align !== "left" && "text-right", "tabular-nums");
+  // < 0.05 rounds to "0.0" -- show it as no change rather than an arrow
+  // pointing at a zero.
+  if (value === null || value === undefined || Number.isNaN(value) || Math.abs(value) < 0.05) {
+    return (
+      <TableCell className={cls}>
+        <span className="text-muted-foreground">—</span>
+      </TableCell>
+    );
+  }
+  const up = value > 0;
+  return (
+    <TableCell className={cls}>
+      <span
+        className={cn(
+          "inline-flex items-center gap-0.5 font-medium",
+          up ? "text-emerald-600 dark:text-emerald-400" : "text-primary",
+        )}
+      >
+        {up ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+        {formatDecimal(Math.abs(value))}
+      </span>
+    </TableCell>
+  );
+}
+
 export interface PaginatedColumn<T> {
   key: keyof T;
   label: string;
@@ -28,6 +57,15 @@ export interface PaginatedColumn<T> {
   // Analytics channel table), scaled to this column's min/max across the
   // rows currently on screen -- i.e. the current page.
   heatmap?: boolean;
+  // Render the cell as a signed change: an up arrow + green when the
+  // value is positive, down arrow + red when negative, an em dash when
+  // null. The row value must be `number | null`, already oriented so
+  // positive = better (e.g. position improvement = previous - current).
+  delta?: boolean;
+  // Column headers are sortable by default (they drive a SQL re-query).
+  // Set false for columns with no server-side sort key (e.g. a delta or
+  // derived column).
+  sortable?: boolean;
 }
 
 interface PaginatedTableProps<T> {
@@ -104,26 +142,36 @@ export function PaginatedTable<T extends object>({
       <Table>
         <TableHeader>
           <TableRow>
-            {columns.map((col) => (
-              <TableHead
-                key={String(col.key)}
-                className={cn("cursor-pointer select-none", col.align === "right" && "text-right")}
-                onClick={() => toggleSort(String(col.key))}
-              >
-                <span className="inline-flex items-center gap-1">
-                  {col.label}
-                  {sortKey === col.key ? (
-                    sortDir === "asc" ? (
-                      <ArrowUp className="size-3" />
+            {columns.map((col) => {
+              const sortable = col.sortable ?? !col.delta;
+              if (!sortable) {
+                return (
+                  <TableHead key={String(col.key)} className={cn("select-none", col.align === "right" && "text-right")}>
+                    {col.label}
+                  </TableHead>
+                );
+              }
+              return (
+                <TableHead
+                  key={String(col.key)}
+                  className={cn("cursor-pointer select-none", col.align === "right" && "text-right")}
+                  onClick={() => toggleSort(String(col.key))}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {col.label}
+                    {sortKey === col.key ? (
+                      sortDir === "asc" ? (
+                        <ArrowUp className="size-3" />
+                      ) : (
+                        <ArrowDown className="size-3" />
+                      )
                     ) : (
-                      <ArrowDown className="size-3" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="size-3 opacity-30" />
-                  )}
-                </span>
-              </TableHead>
-            ))}
+                      <ArrowUpDown className="size-3 opacity-30" />
+                    )}
+                  </span>
+                </TableHead>
+              );
+            })}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -143,9 +191,21 @@ export function PaginatedTable<T extends object>({
                     />
                   );
                 }
+                if (col.delta) {
+                  return (
+                    <DeltaCell key={String(col.key)} value={row[col.key] as number | null} align={col.align} />
+                  );
+                }
+                const raw = row[col.key];
                 return (
                   <TableCell key={String(col.key)} className={cn(col.align === "right" && "text-right")}>
-                    {col.format ? FORMATTERS[col.format](row[col.key]) : String(row[col.key])}
+                    {raw === null || raw === undefined ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : col.format ? (
+                      FORMATTERS[col.format](raw)
+                    ) : (
+                      String(raw)
+                    )}
                   </TableCell>
                 );
               })}

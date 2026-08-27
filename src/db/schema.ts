@@ -1,5 +1,6 @@
 import {
   date,
+  index,
   integer,
   numeric,
   pgTable,
@@ -95,6 +96,32 @@ export const gscDailyPage = pgTable(
     position: numeric("position").notNull(),
   },
   (table) => [unique().on(table.date, table.page)],
+);
+
+// One row per (page, query) pair per day -- the only breakdown that
+// carries both dimensions, needed for "which query drove the most clicks
+// to this page". Much larger than the single-dimension GSC tables (it's
+// closer to their product), so it's synced/backfilled on its own and
+// read only by the landing-pages "Top query" column.
+export const gscDailyPageQuery = pgTable(
+  "gsc_daily_page_query",
+  {
+    id: serial("id").primaryKey(),
+    date: date("date", { mode: "string" }).notNull(),
+    page: text("page").notNull(),
+    query: text("query").notNull(),
+    clicks: integer("clicks").notNull(),
+    impressions: integer("impressions").notNull(),
+    ctr: numeric("ctr").notNull(),
+    position: numeric("position").notNull(),
+  },
+  (table) => [
+    unique().on(table.date, table.page, table.query),
+    // "top query for this page over a date range" seeks by page first,
+    // then scans the date slice -- the unique index (date-first) can't
+    // serve that without scanning every page in the range.
+    index("gsc_daily_page_query_page_date_idx").on(table.page, table.date),
+  ],
 );
 
 export const gscDailyCountry = pgTable(

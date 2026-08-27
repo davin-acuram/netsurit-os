@@ -129,11 +129,15 @@ async function fetchKpiValues(range: DateRange): Promise<KpiValues> {
 }
 
 export async function getKpiSummary(range: DateRange, withComparison: boolean): Promise<KpiSummary> {
-  const current = await fetchKpiValues(range);
   if (!withComparison) {
-    return { current, previous: null, deltaPct: {} };
+    return { current: await fetchKpiValues(range), previous: null, deltaPct: {} };
   }
-  const previous = await fetchKpiValues(getPreviousPeriod(range));
+  // Current and previous periods are independent scans -- run them in
+  // parallel instead of one after the other.
+  const [current, previous] = await Promise.all([
+    fetchKpiValues(range),
+    fetchKpiValues(getPreviousPeriod(range)),
+  ]);
   const keys = Object.keys(current) as (keyof KpiValues)[];
   const deltas: Partial<Record<keyof KpiValues, number | null>> = {};
   for (const key of keys) {
@@ -182,11 +186,13 @@ async function fetchOverviewKpiValues(range: DateRange): Promise<OverviewKpiValu
 }
 
 export async function getOverviewKpiSummary(range: DateRange, withComparison: boolean): Promise<OverviewKpiSummary> {
-  const current = await fetchOverviewKpiValues(range);
   if (!withComparison) {
-    return { current, previous: null, deltaPct: {} };
+    return { current: await fetchOverviewKpiValues(range), previous: null, deltaPct: {} };
   }
-  const previous = await fetchOverviewKpiValues(getPreviousPeriod(range));
+  const [current, previous] = await Promise.all([
+    fetchOverviewKpiValues(range),
+    fetchOverviewKpiValues(getPreviousPeriod(range)),
+  ]);
   const keys = Object.keys(current) as (keyof OverviewKpiValues)[];
   const deltas: Partial<Record<keyof OverviewKpiValues, number | null>> = {};
   for (const key of keys) {
