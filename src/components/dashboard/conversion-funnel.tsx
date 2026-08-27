@@ -27,10 +27,14 @@ const STAGE_GAP = 6;
 const SVG_WIDTH = 120;
 const SVG_HEIGHT = STAGE_HEIGHT * 4 + STAGE_GAP * 3;
 
-// Steps down the same blue intensity ramp the geo choropleth already uses
-// for data fills (--data-heatmap), rather than introducing a new hue --
-// this is the one other place in the app a sequential data fill shows up.
-const FILL_OPACITY = [1, 0.72, 0.46] as const;
+// Ember (--primary) stepped from full saturation at the top stage down to
+// a pale pastel at the bottom -- the funnel narrows and lightens together.
+// The last stage ("Closed deals") still gets a faint fill under its dashed
+// outline rather than no fill at all.
+const FILL_OPACITY = [1, 0.62, 0.38, 0.14] as const;
+// Dashed outline colour for the placeholder ("Closed deals") stage --
+// full-strength Ember reading as a darker red over that stage's 14% fill.
+const PLACEHOLDER_STROKE = "var(--primary)";
 
 function FunnelGraphic() {
   return (
@@ -56,9 +60,9 @@ function FunnelGraphic() {
           <polygon
             key={i}
             points={points}
-            fill={placeholder ? "none" : "var(--data-heatmap)"}
-            fillOpacity={placeholder ? undefined : FILL_OPACITY[i]}
-            stroke={placeholder ? "var(--border)" : "none"}
+            fill="var(--primary)"
+            fillOpacity={FILL_OPACITY[i]}
+            stroke={placeholder ? PLACEHOLDER_STROKE : "none"}
             strokeWidth={placeholder ? 1.5 : 0}
             strokeDasharray={placeholder ? "4 3" : undefined}
           />
@@ -76,13 +80,15 @@ function StageRow({ stage }: { stage: FunnelStage }) {
         <p
           className={cn(
             "font-sans text-lg leading-none font-semibold tabular-nums",
-            stage.placeholder ? "text-muted-foreground" : "text-foreground",
+            // The established dashboard "chart blue" (--data-heatmap): geo
+            // choropleth, table heatmaps, and now these funnel figures.
+            stage.placeholder ? "text-muted-foreground" : "text-[var(--data-heatmap)]",
           )}
         >
           {stage.figure}
         </p>
       </div>
-      {stage.sub && <p className="text-[11px] leading-snug text-muted-foreground italic">{stage.sub}</p>}
+      {stage.sub && <p className="text-[13px] leading-snug text-muted-foreground italic">{stage.sub}</p>}
     </div>
   );
 }

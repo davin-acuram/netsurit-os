@@ -3,6 +3,31 @@ import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { BRAND_TERMS } from "@/lib/insights/brand-terms";
 
+// Temporary profiling: set GSC_QUERY_TIMING=1 to log per-query wall time
+// to the server console. No-op otherwise.
+const TIMING = process.env.GSC_QUERY_TIMING === "1";
+async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  if (!TIMING) return fn();
+  const t0 = performance.now();
+  console.log(`[gsc-timing] START ${label} @ +${Math.round(t0)}`);
+  try {
+    return await fn();
+  } finally {
+    console.log(`[gsc-timing] END   ${label}: ${Math.round(performance.now() - t0)}ms`);
+  }
+}
+
+// Every detail-page read is wrapped in unstable_cache keyed by its
+// arguments (date range, sort, page, segment). The underlying tables only
+// change when the GSC sync lands new daily rows a few times a day, so an
+// hour of staleness on a marketing dashboard is invisible -- and it turns
+// the common case (open the page on the default range, page 1, default
+// sort) into a cache hit that skips the DB entirely. First load of any
+// given range/sort/page combination still pays full price; see the
+// per-query timings in the commit message. Same rationale and revalidate
+// window as getClicksImpressionsMonthlyTrend.
+const READ_CACHE = { revalidate: 3600 } as const;
+
 export interface DateRange {
   start: string;
   end: string;
@@ -151,8 +176,8 @@ interface RawKpiRow {
 // The brand test runs against a per_query rollup, not the raw daily rows:
 // collapsing ~130k daily rows to ~17k distinct queries first cuts the
 // regex-match work by ~8x (measured ~3s -> ~0.5s for this query).
-async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
-  const result = await db.execute(sql`
+const fetchKpiValues = unstable_cache(async (range: DateRange): Promise<GscKpiValues> => {
+  const result = await timed(`fetchKpiValues ${range.start}..${range.end}`, () => db.execute(sql`
     WITH per_query AS (
       SELECT
         query,
@@ -169,7 +194,7 @@ async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
       COALESCE(SUM(position_weighted), 0) as position_weighted,
       COALESCE(SUM(clicks) FILTER (WHERE NOT (${brandedQueryCondition()})), 0) as nonbranded_clicks
     FROM per_query
-  `);
+  `));
   const rows = result as unknown as RawKpiRow[];
   const row = rows[0];
   const clicks = Number(row?.clicks ?? 0);
@@ -185,7 +210,7 @@ async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
     nonBrandedClicks,
     nonBrandedClickShare: safeDivide(nonBrandedClicks, clicks),
   };
-}
+}, ["gsc-kpi-values"], READ_CACHE);
 
 export async function getKpiSummary(range: DateRange, withComparison: boolean): Promise<GscKpiSummary> {
   if (!withComparison) {
@@ -219,7 +244,7 @@ export async function getKpiSummary(range: DateRange, withComparison: boolean): 
 // (shared across requests / instances) between revalidations.
 export const getClicksImpressionsMonthlyTrend = unstable_cache(
   async (): Promise<MonthlyClicksImpressions[]> => {
-    const result = await db.execute(sql`
+    const result = await timed("getClicksImpressionsMonthlyTrend (cache miss)", () => db.execute(sql`
       SELECT
         to_char(date_trunc('month', date), 'YYYY-MM') as month,
         SUM(clicks) as clicks,
@@ -228,7 +253,7 @@ export const getClicksImpressionsMonthlyTrend = unstable_cache(
       WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
       GROUP BY month
       ORDER BY month ASC
-    `);
+    `));
     const rows = result as unknown as { month: string; clicks: string; impressions: string }[];
     return rows.map((r) => ({
       month: r.month,
@@ -244,8 +269,8 @@ export const getClicksImpressionsMonthlyTrend = unstable_cache(
 // range (same position calc as getTopQueries). Bucketed SQL-side; only
 // four counts come back. Queries with zero impressions have no meaningful
 // position and are excluded.
-export async function getPositionDistribution(range: DateRange): Promise<PositionBucketRow[]> {
-  const result = await db.execute(sql`
+export const getPositionDistribution = unstable_cache(async (range: DateRange): Promise<PositionBucketRow[]> => {
+  const result = await timed("getPositionDistribution", () => db.execute(sql`
     WITH agg AS (
       SELECT SUM(position * impressions) / SUM(impressions) AS position
       FROM gsc_daily_query
@@ -259,7 +284,7 @@ export async function getPositionDistribution(range: DateRange): Promise<Positio
       COUNT(*) FILTER (WHERE position >= 10.5 AND position < 20.5) AS b11_20,
       COUNT(*) FILTER (WHERE position >= 20.5) AS b21
     FROM agg
-  `);
+  `));
   const rows = result as unknown as { b1_3: string; b4_10: string; b11_20: string; b21: string }[];
   const row = rows[0];
   return [
@@ -268,7 +293,7 @@ export async function getPositionDistribution(range: DateRange): Promise<Positio
     { bucket: "11–20", queries: Number(row?.b11_20 ?? 0) },
     { bucket: "21+", queries: Number(row?.b21 ?? 0) },
   ];
-}
+}, ["gsc-position-distribution"], READ_CACHE);
 
 export const PAGE_SIZE = 25;
 
@@ -317,13 +342,13 @@ interface RawTopRow {
   total_count: string;
 }
 
-export async function getTopQueries(
+export const getTopQueries = unstable_cache(async (
   range: DateRange,
   page: number,
   sortKey: QuerySortKey,
   sortDir: SortDir,
   segment: QuerySegment,
-): Promise<PaginatedResult<QueryRow>> {
+): Promise<PaginatedResult<QueryRow>> => {
   const offset = (page - 1) * PAGE_SIZE;
   const column = QUERY_SORT_COLUMNS[sortKey];
   const prev = getPreviousPeriod(range);
@@ -331,8 +356,15 @@ export async function getTopQueries(
   // the brand filter to that ~17k-row rollup (see brandedQueryCondition).
   // COUNT(*) OVER() runs after the filter and before LIMIT, so the total
   // reflects the segment, not the whole table.
-  const result = await db.execute(sql`
-    WITH cur AS (
+  //
+  // `cur AS MATERIALIZED` is load-bearing: without it the planner inlines
+  // the CTE and pushes the `NOT (cur.query ILIKE ...)` filter down onto the
+  // raw ~130k-row daily scan (confirmed via EXPLAIN -- "Rows Removed by
+  // Filter" on the index scan), running the 8-way ILIKE per daily row and
+  // adding ~1.7s. Materializing forces the GROUP BY to happen first, so the
+  // ILIKEs only ever touch the ~17k grouped rows (~2.6s -> ~0.85s).
+  const result = await timed(`getTopQueries ${segment} p${page} ${sortKey}/${sortDir}`, () => db.execute(sql`
+    WITH cur AS MATERIALIZED (
       SELECT
         query,
         SUM(clicks) as clicks,
@@ -356,7 +388,7 @@ export async function getTopQueries(
     ${segmentFilter(segment)}
     ORDER BY ${orderByFragment(column, sortDir)}
     LIMIT ${PAGE_SIZE} OFFSET ${offset}
-  `);
+  `));
   const rows = result as unknown as (RawTopRow & { query: string; prev_position: string | null })[];
   return {
     rows: rows.map((r) => {
@@ -373,21 +405,21 @@ export async function getTopQueries(
     }),
     total: rows.length > 0 ? Number(rows[0].total_count) : 0,
   };
-}
+}, ["gsc-top-queries"], READ_CACHE);
 
-export async function getTopPages(
+export const getTopPages = unstable_cache(async (
   range: DateRange,
   page: number,
   sortKey: PageSortKey,
   sortDir: SortDir,
-): Promise<PaginatedResult<PageRow>> {
+): Promise<PaginatedResult<PageRow>> => {
   const offset = (page - 1) * PAGE_SIZE;
   const column = PAGE_SORT_COLUMNS[sortKey];
   // The page metrics come from gsc_daily_page; the "top query" per page
   // needs gsc_daily_page_query, which is bigger. Paginate the page list
   // first, then a LATERAL sub-select finds rank-1 query for just the 25
   // pages on screen (seeks by page via gsc_daily_page_query_page_date_idx).
-  const result = await db.execute(sql`
+  const result = await timed(`getTopPages p${page} ${sortKey}/${sortDir}`, () => db.execute(sql`
     WITH agg AS (
       SELECT
         page,
@@ -413,7 +445,7 @@ export async function getTopPages(
       LIMIT 1
     ) tq ON true
     ORDER BY ${orderByFragment(column, sortDir)}
-  `);
+  `));
   const rows = result as unknown as (RawTopRow & { page: string; top_query: string | null })[];
   return {
     rows: rows.map((r) => ({
@@ -426,12 +458,12 @@ export async function getTopPages(
     })),
     total: rows.length > 0 ? Number(rows[0].total_count) : 0,
   };
-}
+}, ["gsc-top-pages"], READ_CACHE);
 
 const COUNTRY_LIMIT = 15;
 
-export async function getCountryBreakdown(range: DateRange): Promise<CountryRow[]> {
-  const result = await db.execute(sql`
+export const getCountryBreakdown = unstable_cache(async (range: DateRange): Promise<CountryRow[]> => {
+  const result = await timed("getCountryBreakdown", () => db.execute(sql`
     SELECT
       country,
       SUM(clicks) as clicks,
@@ -443,7 +475,7 @@ export async function getCountryBreakdown(range: DateRange): Promise<CountryRow[
     GROUP BY country
     ORDER BY clicks DESC
     LIMIT ${COUNTRY_LIMIT}
-  `);
+  `));
   const rows = result as unknown as (RawTopRow & { country: string })[];
   return rows.map((r) => ({
     country: r.country,
@@ -452,7 +484,7 @@ export async function getCountryBreakdown(range: DateRange): Promise<CountryRow[
     ctr: Number(r.ctr),
     position: Number(r.position),
   }));
-}
+}, ["gsc-country-breakdown"], READ_CACHE);
 
 export interface OpportunityCandidate {
   query: string;
@@ -554,8 +586,8 @@ export async function getKeyInsightsData(
   };
 }
 
-export async function getDeviceBreakdown(range: DateRange): Promise<DeviceRow[]> {
-  const result = await db.execute(sql`
+export const getDeviceBreakdown = unstable_cache(async (range: DateRange): Promise<DeviceRow[]> => {
+  const result = await timed("getDeviceBreakdown", () => db.execute(sql`
     SELECT
       device,
       SUM(clicks) as clicks,
@@ -566,7 +598,7 @@ export async function getDeviceBreakdown(range: DateRange): Promise<DeviceRow[]>
     WHERE date BETWEEN ${range.start} AND ${range.end}
     GROUP BY device
     ORDER BY clicks DESC
-  `);
+  `));
   const rows = result as unknown as (RawTopRow & { device: string })[];
   return rows.map((r) => ({
     device: r.device,
@@ -575,4 +607,4 @@ export async function getDeviceBreakdown(range: DateRange): Promise<DeviceRow[]>
     ctr: Number(r.ctr),
     position: Number(r.position),
   }));
-}
+}, ["gsc-device-breakdown"], READ_CACHE);
