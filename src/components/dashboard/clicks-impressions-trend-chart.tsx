@@ -1,6 +1,7 @@
 "use client";
 
-import { CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
+import { useId } from "react";
+import { Area, Bar, CartesianGrid, ComposedChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
   ChartLegend,
@@ -9,46 +10,147 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import type { TrendPoint } from "@/lib/search-console/queries";
+import { formatCompactNumber, formatNumber } from "@/lib/format";
+import type { MonthlyClicksImpressions } from "@/lib/search-console/queries";
 
 const config: ChartConfig = {
-  clicks: { label: "Clicks", color: "var(--chart-1)" },
-  impressions: { label: "Impressions", color: "var(--chart-2)" },
+  // Clicks reuse --data-heatmap, the dashboard's one established blue
+  // (geo choropleth, table heatmaps). Impressions reuse --chart-1 (Ember),
+  // the featured-series red, drawn as a gradient-filled area on top.
+  clicks: { label: "Clicks", color: "var(--data-heatmap)" },
+  impressions: { label: "Impressions", color: "var(--chart-1)" },
 };
 
-// Clicks and impressions differ by 1-2 orders of magnitude, so they get
-// separate Y axes instead of sharing one scale.
-export function ClicksImpressionsTrendChart({ data }: { data: TrendPoint[] }) {
+// Emerald, matching the positive-delta accent the KPI cards already use --
+// legible in both themes and distinct from the blue bars / red line.
+const AVG_LINE_COLOR = "#10b981";
+
+function formatMonthLabel(month: string): string {
+  const [year, monthNum] = month.split("-");
+  return new Date(Number(year), Number(monthNum) - 1, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+// Rounds up to a "nice" number so an axis tick doesn't read as an
+// arbitrary data-derived value.
+function niceCeiling(value: number): number {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  return Math.ceil(value / magnitude) * magnitude;
+}
+
+// Small pill drawn at the left end of the dashed average line, mirroring
+// the reference. recharts clones this element with the line's viewBox.
+function AverageLabel(props: { viewBox?: { x?: number; y?: number }; text: string }) {
+  const { viewBox, text } = props;
+  if (viewBox?.x == null || viewBox?.y == null) return null;
+  const x = viewBox.x + 8;
+  const baseline = viewBox.y - 7;
+  const width = text.length * 6.1 + 16;
+
   return (
-    <ChartContainer config={config} className="max-h-[280px] w-full">
-      <ComposedChart data={data} margin={{ left: 8, right: 8 }}>
+    <g pointerEvents="none">
+      <rect
+        x={x}
+        y={baseline - 13}
+        width={width}
+        height={18}
+        rx={4}
+        fill={AVG_LINE_COLOR}
+        fillOpacity={0.14}
+      />
+      <text x={x + 8} y={baseline} fontSize={11} fontWeight={600} fill={AVG_LINE_COLOR}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+export function ClicksImpressionsTrendChart({
+  data,
+  averageClicks,
+}: {
+  data: MonthlyClicksImpressions[];
+  averageClicks: number;
+}) {
+  const gradientId = useId();
+
+  const maxClicks = Math.max(1, ...data.map((d) => d.clicks));
+  const maxImpressions = Math.max(1, ...data.map((d) => d.impressions));
+  // Pad the clicks axis past the real max so the bars occupy roughly the
+  // lower half of the plot and the impressions area rides above them,
+  // matching the reference's scale proportions.
+  const clicksDomain: [number, number] = [0, niceCeiling(maxClicks * 1.5)];
+  const impressionsDomain: [number, number] = [0, niceCeiling(maxImpressions * 1.05)];
+
+  return (
+    <ChartContainer config={config} className="max-h-[300px] w-full">
+      <ComposedChart data={data} margin={{ left: 8, right: 8, top: 8 }}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="var(--color-impressions)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="var(--color-impressions)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
         <CartesianGrid vertical={false} />
         <XAxis
-          dataKey="date"
+          dataKey="month"
           tickLine={false}
           axisLine={false}
-          minTickGap={40}
-          tickFormatter={(value: string) => value.slice(5)}
+          minTickGap={24}
+          tickFormatter={formatMonthLabel}
         />
-        <YAxis yAxisId="clicks" tickLine={false} axisLine={false} width={40} />
-        <YAxis yAxisId="impressions" orientation="right" tickLine={false} axisLine={false} width={48} />
-        <ChartTooltip content={<ChartTooltipContent labelKey="date" />} />
+        <YAxis
+          yAxisId="clicks"
+          domain={clicksDomain}
+          tickLine={false}
+          axisLine={false}
+          width={44}
+          tickFormatter={(v: number) => formatNumber(v)}
+        />
+        <YAxis
+          yAxisId="impressions"
+          orientation="right"
+          domain={impressionsDomain}
+          tickLine={false}
+          axisLine={false}
+          width={48}
+          tickFormatter={(v: number) => formatCompactNumber(v)}
+        />
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              labelKey="month"
+              labelFormatter={(_, payload) => formatMonthLabel(String(payload?.[0]?.payload?.month ?? ""))}
+              formatter={(value, name) => [`${formatNumber(Number(value))} ${String(name)}`, ""]}
+            />
+          }
+        />
         <ChartLegend content={<ChartLegendContent />} />
-        <Line
+        <Bar
           yAxisId="clicks"
           dataKey="clicks"
-          type="monotone"
-          stroke="var(--color-clicks)"
-          strokeWidth={2}
-          dot={false}
+          fill="var(--color-clicks)"
+          radius={[3, 3, 0, 0]}
+          maxBarSize={40}
+          isAnimationActive={false}
         />
-        <Line
+        <Area
           yAxisId="impressions"
           dataKey="impressions"
           type="monotone"
           stroke="var(--color-impressions)"
           strokeWidth={2}
-          dot={false}
+          fill={`url(#${gradientId})`}
+          baseValue={0}
+          isAnimationActive={false}
+        />
+        <ReferenceLine
+          yAxisId="clicks"
+          y={averageClicks}
+          stroke={AVG_LINE_COLOR}
+          strokeDasharray="6 4"
+          strokeWidth={1.5}
+          label={<AverageLabel text={`Average clicks (${formatNumber(averageClicks)})`} />}
         />
       </ComposedChart>
     </ChartContainer>

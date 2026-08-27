@@ -9,8 +9,18 @@ import {
   type QuerySortKey,
   type SortDir,
 } from "@/lib/search-console/queries";
-import { BreakdownSkeleton, ChartSkeleton, KpiSkeleton, SectionCard, TableSkeleton } from "../analytics/sections";
-import { CountrySection, DeviceSection, KpiSection, PagesSection, QueriesSection, TrendSection } from "./sections";
+import { ChartSkeleton, DonutSkeleton, SectionCard, TableSkeleton } from "../analytics/sections";
+import {
+  CountrySection,
+  DeviceSection,
+  KpiSection,
+  KpiSkeleton,
+  PagesSection,
+  PositionSection,
+  PositionSkeleton,
+  QueriesSection,
+  TrendSection,
+} from "./sections";
 
 function defaultRange(): { from: string; to: string } {
   const to = new Date();
@@ -28,6 +38,10 @@ function parseDir(value: string | string[] | undefined): SortDir {
   return value === "asc" ? "asc" : "desc";
 }
 
+function parseQuerySort(value: string | string[] | undefined): QuerySortKey {
+  return typeof value === "string" && isQuerySortKey(value) ? value : "clicks";
+}
+
 export default async function SearchConsolePage({ searchParams }: PageProps<"/search-console">) {
   const params = await searchParams;
   const fallback = defaultRange();
@@ -35,10 +49,18 @@ export default async function SearchConsolePage({ searchParams }: PageProps<"/se
   const to = typeof params.to === "string" ? params.to : fallback.to;
   const range: DateRange = { start: from, end: to };
 
-  const qSortRaw = typeof params.qSort === "string" ? params.qSort : "clicks";
-  const qSort: QuerySortKey = isQuerySortKey(qSortRaw) ? qSortRaw : "clicks";
-  const qDir = parseDir(params.qDir);
-  const qPage = parsePage(params.qPage);
+  // Three independently sorted/paginated tables on this page: branded
+  // queries ("qb"), non-branded queries ("qn"), landing pages ("p").
+  const branded = {
+    sortKey: parseQuerySort(params.qbSort),
+    sortDir: parseDir(params.qbDir),
+    page: parsePage(params.qbPage),
+  };
+  const nonBranded = {
+    sortKey: parseQuerySort(params.qnSort),
+    sortDir: parseDir(params.qnDir),
+    page: parsePage(params.qnPage),
+  };
 
   const pSortRaw = typeof params.pSort === "string" ? params.pSort : "clicks";
   const pSort: PageSortKey = isPageSortKey(pSortRaw) ? pSortRaw : "clicks";
@@ -60,37 +82,66 @@ export default async function SearchConsolePage({ searchParams }: PageProps<"/se
         <KpiSection range={range} />
       </Suspense>
 
-      <SectionCard title="Clicks & impressions" description="Daily totals for the selected date range.">
+      <SectionCard
+        title="Clicks & impressions"
+        description="Monthly totals, trailing 22 months. This card is not affected by the date range selector."
+      >
         <Suspense fallback={<ChartSkeleton />}>
-          <TrendSection range={range} />
+          <TrendSection />
         </Suspense>
       </SectionCard>
 
-      <SectionCard title="Top queries">
+      <SectionCard title="Branded terms" description="Queries containing a known Netsurit brand or entity name.">
         <Suspense fallback={<TableSkeleton />}>
-          <QueriesSection range={range} page={qPage} sortKey={qSort} sortDir={qDir} />
+          <QueriesSection
+            range={range}
+            segment="branded"
+            paramPrefix="qb"
+            page={branded.page}
+            sortKey={branded.sortKey}
+            sortDir={branded.sortDir}
+          />
         </Suspense>
       </SectionCard>
 
-      <SectionCard title="Top pages">
+      <SectionCard title="Non-branded terms" description="Generic / discovery queries with no brand name.">
+        <Suspense fallback={<TableSkeleton />}>
+          <QueriesSection
+            range={range}
+            segment="nonbranded"
+            paramPrefix="qn"
+            page={nonBranded.page}
+            sortKey={nonBranded.sortKey}
+            sortDir={nonBranded.sortDir}
+          />
+        </Suspense>
+      </SectionCard>
+
+      <SectionCard title="Top landing pages" description="Pages ranked by organic performance for the selected date range.">
         <Suspense fallback={<TableSkeleton />}>
           <PagesSection range={range} page={pPage} sortKey={pSort} sortDir={pDir} />
         </Suspense>
       </SectionCard>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SectionCard title="Country breakdown" description="Top countries by clicks.">
-          <Suspense fallback={<TableSkeleton />}>
-            <CountrySection range={range} />
+        <SectionCard title="Position distribution" description="Queries by average position bucket for the selected date range.">
+          <Suspense fallback={<PositionSkeleton />}>
+            <PositionSection range={range} />
           </Suspense>
         </SectionCard>
 
-        <SectionCard title="Device breakdown">
-          <Suspense fallback={<BreakdownSkeleton />}>
+        <SectionCard title="Device breakdown" description="Organic clicks by device for the selected date range.">
+          <Suspense fallback={<DonutSkeleton />}>
             <DeviceSection range={range} />
           </Suspense>
         </SectionCard>
       </div>
+
+      <SectionCard title="Country breakdown" description="Top countries by organic clicks for the selected date range.">
+        <Suspense fallback={<TableSkeleton />}>
+          <CountrySection range={range} />
+        </Suspense>
+      </SectionCard>
     </div>
   );
 }

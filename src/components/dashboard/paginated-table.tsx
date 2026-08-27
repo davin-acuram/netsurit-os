@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { HeatmapCell } from "@/components/dashboard/heatmap-cell";
 import { formatDecimal, formatNumber, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,10 @@ export interface PaginatedColumn<T> {
   label: string;
   align?: "left" | "right";
   format?: PaginatedColumnFormat;
+  // Render the cell as a single-hue heatmap chip (same treatment as the
+  // Analytics channel table), scaled to this column's min/max across the
+  // rows currently on screen -- i.e. the current page.
+  heatmap?: boolean;
 }
 
 interface PaginatedTableProps<T> {
@@ -78,6 +83,18 @@ export function PaginatedTable<T extends object>({
     }
   }
 
+  // Heatmap columns scale to the values on the current page only, matching
+  // HeatmapCell's own "currently displayed rows" contract.
+  const heatmapRanges = new Map<string, { min: number; max: number }>();
+  for (const col of columns) {
+    if (!col.heatmap) continue;
+    const values = rows.map((r) => Number(r[col.key]));
+    heatmapRanges.set(String(col.key), {
+      min: values.length ? Math.min(...values) : 0,
+      max: values.length ? Math.max(...values) : 0,
+    });
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, total);
@@ -112,11 +129,26 @@ export function PaginatedTable<T extends object>({
         <TableBody>
           {rows.map((row, i) => (
             <TableRow key={i}>
-              {columns.map((col) => (
-                <TableCell key={String(col.key)} className={cn(col.align === "right" && "text-right")}>
-                  {col.format ? FORMATTERS[col.format](row[col.key]) : String(row[col.key])}
-                </TableCell>
-              ))}
+              {columns.map((col) => {
+                if (col.heatmap) {
+                  const range = heatmapRanges.get(String(col.key)) ?? { min: 0, max: 0 };
+                  const fmt = col.format ?? "number";
+                  return (
+                    <HeatmapCell
+                      key={String(col.key)}
+                      value={Number(row[col.key])}
+                      min={range.min}
+                      max={range.max}
+                      format={(v) => FORMATTERS[fmt](v)}
+                    />
+                  );
+                }
+                return (
+                  <TableCell key={String(col.key)} className={cn(col.align === "right" && "text-right")}>
+                    {col.format ? FORMATTERS[col.format](row[col.key]) : String(row[col.key])}
+                  </TableCell>
+                );
+              })}
             </TableRow>
           ))}
         </TableBody>

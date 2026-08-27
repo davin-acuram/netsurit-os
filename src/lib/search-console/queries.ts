@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { BRAND_TERMS } from "@/lib/insights/brand-terms";
 
 export interface DateRange {
   start: string;
@@ -8,11 +9,34 @@ export interface DateRange {
 
 export type SortDir = "asc" | "desc";
 
+// "branded" -- the searcher already knows a Netsurit entity name;
+// "nonbranded" -- generic/discovery search. Classification is the single
+// hardcoded substring list in src/lib/insights/brand-terms.ts, matched
+// the same way getKeyInsightsData does.
+export type QuerySegment = "branded" | "nonbranded";
+
+// OR-joined case-insensitive substring test against BRAND_TERMS. Safe to
+// interpolate: every fragment is a parameterized bind, and the term list
+// is a compile-time constant, never request input.
+function brandedQueryCondition(): SQL {
+  return sql.join(
+    BRAND_TERMS.map((t) => sql`query ILIKE ${`%${t}%`}`),
+    sql` OR `,
+  );
+}
+
+function segmentFilter(segment: QuerySegment): SQL {
+  const cond = brandedQueryCondition();
+  return segment === "branded" ? sql`AND (${cond})` : sql`AND NOT (${cond})`;
+}
+
 export interface GscKpiValues {
   clicks: number;
   impressions: number;
   ctr: number;
   position: number;
+  // Share of organic clicks in the range coming from non-branded queries.
+  nonBrandedClickShare: number;
 }
 
 export interface GscKpiSummary {
@@ -21,10 +45,15 @@ export interface GscKpiSummary {
   deltaPct: Partial<Record<keyof GscKpiValues, number | null>>;
 }
 
-export interface TrendPoint {
-  date: string;
+export interface MonthlyClicksImpressions {
+  month: string; // YYYY-MM
   clicks: number;
   impressions: number;
+}
+
+export interface PositionBucketRow {
+  bucket: string;
+  queries: number;
 }
 
 export interface QueryRow {
@@ -91,6 +120,7 @@ interface RawKpiRow {
   clicks: string | null;
   impressions: string | null;
   position_weighted: string | null;
+  nonbranded_clicks: string | null;
 }
 
 // gsc_daily_query already has one row per query per day -- summing
@@ -104,7 +134,8 @@ async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
     SELECT
       SUM(clicks) as clicks,
       SUM(impressions) as impressions,
-      SUM(position * impressions) as position_weighted
+      SUM(position * impressions) as position_weighted,
+      SUM(clicks) FILTER (WHERE NOT (${brandedQueryCondition()})) as nonbranded_clicks
     FROM gsc_daily_query
     WHERE date BETWEEN ${range.start} AND ${range.end}
   `);
@@ -113,12 +144,14 @@ async function fetchKpiValues(range: DateRange): Promise<GscKpiValues> {
   const clicks = Number(row?.clicks ?? 0);
   const impressions = Number(row?.impressions ?? 0);
   const positionWeighted = Number(row?.position_weighted ?? 0);
+  const nonBrandedClicks = Number(row?.nonbranded_clicks ?? 0);
 
   return {
     clicks,
     impressions,
     ctr: safeDivide(clicks, impressions),
     position: safeDivide(positionWeighted, impressions),
+    nonBrandedClickShare: safeDivide(nonBrandedClicks, clicks),
   };
 }
 
@@ -136,45 +169,59 @@ export async function getKpiSummary(range: DateRange, withComparison: boolean): 
   return { current, previous, deltaPct: deltas };
 }
 
-export async function getClicksImpressionsTrend(range: DateRange): Promise<TrendPoint[]> {
+// Fixed rolling trailing-22-month window ending today, mirroring GA4's
+// getNewUsersMonthlyTrend -- deliberately takes no DateRange, this chart
+// is independent of the page's date-range picker. GSC's own history only
+// begins 2025-04-13, so the window currently returns fewer than 22 months
+// and lengthens naturally as history accumulates; leading empty months
+// are not synthesized.
+export async function getClicksImpressionsMonthlyTrend(): Promise<MonthlyClicksImpressions[]> {
   const result = await db.execute(sql`
-    SELECT date, SUM(clicks) as clicks, SUM(impressions) as impressions
-    FROM gsc_daily_query
-    WHERE date BETWEEN ${range.start} AND ${range.end}
-    GROUP BY date
-    ORDER BY date ASC
-  `);
-  const rows = result as unknown as { date: string; clicks: string; impressions: string }[];
-  return rows.map((r) => ({
-    date: typeof r.date === "string" ? r.date : new Date(r.date as unknown as string).toISOString().slice(0, 10),
-    clicks: Number(r.clicks),
-    impressions: Number(r.impressions),
-  }));
-}
-
-export interface MonthlyClicks {
-  month: string; // YYYY-MM
-  clicks: number;
-}
-
-// Same rolling trailing-22-month window as GA4's getSessionsMonthlyTrend/
-// getNewUsersMonthlyTrend, so the Overview sessions/clicks chart merges
-// two series that cover the exact same window. GSC's own history only
-// starts 2025-04, well inside this window, so earlier months simply come
-// back as 0 clicks -- accurate, not a bug.
-export async function getClicksMonthlyTrend(): Promise<MonthlyClicks[]> {
-  const result = await db.execute(sql`
-    SELECT to_char(date_trunc('month', date), 'YYYY-MM') as month, SUM(clicks) as clicks
+    SELECT
+      to_char(date_trunc('month', date), 'YYYY-MM') as month,
+      SUM(clicks) as clicks,
+      SUM(impressions) as impressions
     FROM gsc_daily_query
     WHERE date >= (CURRENT_DATE - INTERVAL '22 months')
     GROUP BY month
     ORDER BY month ASC
   `);
-  const rows = result as unknown as { month: string; clicks: string }[];
+  const rows = result as unknown as { month: string; clicks: string; impressions: string }[];
   return rows.map((r) => ({
     month: r.month,
     clicks: Number(r.clicks),
+    impressions: Number(r.impressions),
   }));
+}
+
+// Buckets queries by their impression-weighted average position over the
+// range (same position calc as getTopQueries). Bucketed SQL-side; only
+// four counts come back. Queries with zero impressions have no meaningful
+// position and are excluded.
+export async function getPositionDistribution(range: DateRange): Promise<PositionBucketRow[]> {
+  const result = await db.execute(sql`
+    WITH agg AS (
+      SELECT SUM(position * impressions) / SUM(impressions) AS position
+      FROM gsc_daily_query
+      WHERE date BETWEEN ${range.start} AND ${range.end}
+      GROUP BY query
+      HAVING SUM(impressions) > 0
+    )
+    SELECT
+      COUNT(*) FILTER (WHERE position < 3.5) AS b1_3,
+      COUNT(*) FILTER (WHERE position >= 3.5 AND position < 10.5) AS b4_10,
+      COUNT(*) FILTER (WHERE position >= 10.5 AND position < 20.5) AS b11_20,
+      COUNT(*) FILTER (WHERE position >= 20.5) AS b21
+    FROM agg
+  `);
+  const rows = result as unknown as { b1_3: string; b4_10: string; b11_20: string; b21: string }[];
+  const row = rows[0];
+  return [
+    { bucket: "1–3", queries: Number(row?.b1_3 ?? 0) },
+    { bucket: "4–10", queries: Number(row?.b4_10 ?? 0) },
+    { bucket: "11–20", queries: Number(row?.b11_20 ?? 0) },
+    { bucket: "21+", queries: Number(row?.b21 ?? 0) },
+  ];
 }
 
 export const PAGE_SIZE = 25;
@@ -229,6 +276,7 @@ export async function getTopQueries(
   page: number,
   sortKey: QuerySortKey,
   sortDir: SortDir,
+  segment: QuerySegment,
 ): Promise<PaginatedResult<QueryRow>> {
   const offset = (page - 1) * PAGE_SIZE;
   const column = QUERY_SORT_COLUMNS[sortKey];
@@ -242,6 +290,7 @@ export async function getTopQueries(
         CASE WHEN SUM(impressions) = 0 THEN 0 ELSE SUM(position * impressions) / SUM(impressions) END as position
       FROM gsc_daily_query
       WHERE date BETWEEN ${range.start} AND ${range.end}
+      ${segmentFilter(segment)}
       GROUP BY query
     )
     SELECT *, COUNT(*) OVER() as total_count
