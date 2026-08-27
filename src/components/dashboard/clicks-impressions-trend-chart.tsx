@@ -14,16 +14,18 @@ import { formatCompactNumber, formatNumber } from "@/lib/format";
 import type { MonthlyClicksImpressions } from "@/lib/search-console/queries";
 
 const config: ChartConfig = {
-  // Both series use --data-heatmap, the dashboard's one established blue
-  // (geo choropleth, table heatmaps): clicks as solid bars from the
-  // baseline, impressions as a gradient-filled line riding above them.
-  // Form and vertical position keep the two readable without a second hue.
-  clicks: { label: "Clicks", color: "var(--data-heatmap)" },
+  // Clicks bars use --primary (Ember red) -- the same fill as the
+  // Analytics page's New Users bar chart (which sets its bar to
+  // var(--chart-1); --chart-1 and --primary are the same Ember value).
+  // Impressions is the dashboard's established blue (--data-heatmap, also
+  // the geo choropleth and table heatmaps), a gradient-filled line riding
+  // above the bars.
+  clicks: { label: "Clicks", color: "var(--primary)" },
   impressions: { label: "Impressions", color: "var(--data-heatmap)" },
 };
 
 // Emerald, matching the positive-delta accent the KPI cards already use --
-// legible in both themes and distinct from the blue bars and line.
+// legible in both themes and distinct from the red bars and blue line.
 const AVG_LINE_COLOR = "#10b981";
 
 function formatMonthLabel(month: string): string {
