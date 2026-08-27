@@ -48,7 +48,7 @@ function FunnelGraphic() {
     <svg
       viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
       preserveAspectRatio="none"
-      className="h-full w-[110px] shrink-0"
+      className="h-full w-[104px] shrink-0 md:w-[190px]"
       aria-hidden="true"
     >
       {STAGE_GEOMETRY.map((g, i) => {
@@ -72,7 +72,20 @@ function FunnelGraphic() {
   );
 }
 
+// The metric sub-line always reads "<metric> · industry benchmark <value>".
+// Break it after "benchmark" so the metric and its label sit on line one
+// and the benchmark value drops to line two -- keeps each line short
+// enough to read at a glance instead of one long wrapping run.
+function splitSub(sub: string): string[] {
+  const marker = " · industry benchmark ";
+  const i = sub.indexOf(marker);
+  if (i === -1) return [sub];
+  const cut = i + marker.length;
+  return [sub.slice(0, cut - 1), sub.slice(cut)];
+}
+
 function StageRow({ stage }: { stage: FunnelStage }) {
+  const subLines = stage.sub ? splitSub(stage.sub) : [];
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-baseline justify-between gap-3">
@@ -88,14 +101,18 @@ function StageRow({ stage }: { stage: FunnelStage }) {
           {stage.figure}
         </p>
       </div>
-      {stage.sub && <p className="text-[13px] leading-snug text-muted-foreground italic">{stage.sub}</p>}
+      {subLines.map((line, i) => (
+        <p key={i} className="text-[13px] leading-snug text-muted-foreground italic">
+          {line}
+        </p>
+      ))}
     </div>
   );
 }
 
 export function ConversionFunnel({ stages }: { stages: [FunnelStage, FunnelStage, FunnelStage, FunnelStage] }) {
   return (
-    <div className="flex h-full items-stretch gap-6">
+    <div className="flex h-full items-stretch gap-4 md:gap-8">
       <FunnelGraphic />
       <div className="flex flex-1 flex-col justify-between gap-3">
         {stages.map((s, i) => (
